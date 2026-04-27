@@ -59,6 +59,17 @@ Service API WhatsApp reminder berbasis Go untuk menerima data reminder dari serv
 
 Server default akan jalan di `:8080`.
 
+## Akses Dashboard Admin
+
+- URL: `http://localhost:8080/admin`
+- Auth: Basic Auth (`ADMIN_BASIC_USER`, `ADMIN_BASIC_PASS`)
+- Fitur MVP:
+  - status WA + QR panel conditional
+  - stat cards
+  - delivery list + advanced date range
+  - detail modal
+  - export CSV berdasarkan filter
+
 ## Database & Migrasi
 
 - File migrasi utama: `migrations/0001_init.sql`
@@ -77,6 +88,12 @@ Jalankan:
 
 ```bash
 make test
+```
+
+Frontend utility test:
+
+```bash
+node --test web/admin/app.test.js
 ```
 
 ## Catatan Keamanan Minimum

@@ -66,8 +66,9 @@ Semua endpoint admin pakai Basic Auth.
 
 ### Stats/Delivery
 - `GET /stats/overview?range=today|7d|30d`
-- `GET /deliveries?page=1&limit=20&status=sent`
+- `GET /deliveries?page=1&limit=20&status=sent&search=6281&from=2026-04-01&to=2026-04-30`
 - `GET /deliveries/{id}`
+- `GET /deliveries/export.csv?status=&search=&from=&to=`
 
 ### Queue Control
 - `POST /queue/pause`
@@ -99,3 +100,17 @@ Semua endpoint admin pakai Basic Auth.
 - Delay acak antar pesan mengikuti runtime setting (`delay_min_seconds`-`delay_max_seconds`).
 - Runtime setting diambil dari tabel `app_settings` dengan fallback `.env`.
 - Point frontend dashboard penuh dan hardening lanjutan dicatat terpisah (tidak dieksekusi di fase ini).
+
+## Point 10 Dashboard (MVP)
+
+- Route UI: `GET /admin` (Basic Auth)
+- Static assets: `/admin/static/*`
+- Frontend stack: Bootstrap 5 (CDN) + Vanilla JS modular
+- Realtime:
+  - WA status polling 3 detik
+  - Stats polling 10-15 detik
+- Delivery filter:
+  - status
+  - search (phone/service/external_id)
+  - advanced date range (`from`, `to`)
+- CSV export mengikuti filter aktif lewat endpoint `export.csv`

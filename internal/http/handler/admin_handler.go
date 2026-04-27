@@ -68,8 +68,11 @@ func (h *AdminHandler) ListDeliveries(c *gin.Context) {
 	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
 	limit, _ := strconv.Atoi(c.DefaultQuery("limit", "20"))
 	status := c.Query("status")
+	search := c.Query("search")
+	from := c.Query("from")
+	to := c.Query("to")
 
-	data, err := h.service.ListDeliveries(c.Request.Context(), status, page, limit)
+	data, err := h.service.ListDeliveriesAdvanced(c.Request.Context(), status, search, from, to, page, limit)
 	if err != nil {
 		response.Fail(c, http.StatusInternalServerError, "INTERNAL_ERROR", err.Error(), nil)
 		return
@@ -104,4 +107,21 @@ func (h *AdminHandler) ResumeQueue(c *gin.Context) {
 		return
 	}
 	response.OK(c, http.StatusOK, gin.H{"queue_paused": false})
+}
+
+func (h *AdminHandler) ExportDeliveriesCSV(c *gin.Context) {
+	status := c.Query("status")
+	search := c.Query("search")
+	from := c.Query("from")
+	to := c.Query("to")
+
+	data, filename, err := h.service.ExportDeliveriesCSV(c.Request.Context(), status, search, from, to)
+	if err != nil {
+		response.Fail(c, http.StatusBadRequest, "VALIDATION_ERROR", err.Error(), nil)
+		return
+	}
+
+	c.Header("Content-Type", "text/csv; charset=utf-8")
+	c.Header("Content-Disposition", `attachment; filename="`+filename+`"`)
+	c.Data(http.StatusOK, "text/csv; charset=utf-8", data)
 }

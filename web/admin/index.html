@@ -1,0 +1,175 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>WA Reminder Dashboard</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link href="/admin/static/styles.css" rel="stylesheet">
+</head>
+<body>
+  <main class="container py-4" id="appRoot">
+    <section class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+      <div>
+        <h1 class="h4 mb-0">Blesta WA Reminder</h1>
+        <small class="text-muted">Operational dashboard</small>
+      </div>
+      <div class="d-flex gap-2 align-items-center">
+        <span id="waStatusBadge" class="badge text-bg-secondary">Unknown</span>
+        <button id="btnReconnect" class="btn btn-outline-primary btn-sm">Reconnect</button>
+        <button id="btnQueueToggle" class="btn btn-outline-warning btn-sm">Pause Queue</button>
+        <button id="btnLogout" class="btn btn-outline-danger btn-sm">Logout</button>
+      </div>
+    </section>
+
+    <section id="connectionInfo" class="alert alert-light border small mb-3">
+      <strong>Device:</strong> <span id="waPhone">-</span>
+      <span class="mx-2">|</span>
+      <strong>Last seen:</strong> <span id="waLastSeen">-</span>
+    </section>
+
+    <section id="qrSection" class="card mb-3 d-none">
+      <div class="card-body">
+        <div class="d-flex justify-content-between align-items-start">
+          <div>
+            <h2 class="h6 mb-1">Scan QR Code</h2>
+            <p class="text-muted small mb-0">Scan from WhatsApp Linked Devices.</p>
+          </div>
+          <button id="btnRefreshQR" class="btn btn-sm btn-outline-secondary">Refresh QR</button>
+        </div>
+        <div class="mt-3 text-center">
+          <div id="qrCodeView" class="qr-box p-3 mb-2 d-inline-block"></div>
+          <small class="text-muted">Expires in <span id="qrExpires">0</span>s</small>
+        </div>
+      </div>
+    </section>
+
+    <section class="row g-2 mb-3" id="statsCards">
+      <div class="col-6 col-md-2"><div class="card p-2"><small>Queued</small><strong id="statQueued">0</strong></div></div>
+      <div class="col-6 col-md-2"><div class="card p-2"><small>Processing</small><strong id="statProcessing">0</strong></div></div>
+      <div class="col-6 col-md-2"><div class="card p-2"><small>Sent</small><strong id="statSent">0</strong></div></div>
+      <div class="col-6 col-md-2"><div class="card p-2"><small>Retrying</small><strong id="statRetrying">0</strong></div></div>
+      <div class="col-6 col-md-2"><div class="card p-2"><small>Failed</small><strong id="statFailed">0</strong></div></div>
+      <div class="col-6 col-md-2"><div class="card p-2"><small>Success</small><strong id="statSuccessRate">0%</strong></div></div>
+    </section>
+
+    <section class="card">
+      <div class="card-body">
+        <div class="row g-2 align-items-end mb-3">
+          <div class="col-md-2">
+            <label class="form-label form-label-sm">Range</label>
+            <select id="filterRange" class="form-select form-select-sm">
+              <option value="today">Today</option>
+              <option value="7d">7d</option>
+              <option value="30d">30d</option>
+            </select>
+          </div>
+          <div class="col-md-2">
+            <label class="form-label form-label-sm">Status</label>
+            <select id="filterStatus" class="form-select form-select-sm">
+              <option value="">All</option>
+              <option value="sent">sent</option>
+              <option value="send_failed">send_failed</option>
+              <option value="precheck_failed">precheck_failed</option>
+            </select>
+          </div>
+          <div class="col-md-3">
+            <label class="form-label form-label-sm">Search</label>
+            <input id="filterSearch" class="form-control form-control-sm" placeholder="phone/service/external_id">
+          </div>
+          <div class="col-md-2">
+            <label class="form-label form-label-sm">From</label>
+            <input id="filterFrom" type="date" class="form-control form-control-sm">
+          </div>
+          <div class="col-md-2">
+            <label class="form-label form-label-sm">To</label>
+            <input id="filterTo" type="date" class="form-control form-control-sm">
+          </div>
+          <div class="col-md-1 d-grid">
+            <button id="btnApplyFilters" class="btn btn-primary btn-sm">Apply</button>
+          </div>
+        </div>
+
+        <div class="d-flex justify-content-between align-items-center mb-2">
+          <div class="small text-muted" id="deliveryMeta">-</div>
+          <div class="d-flex gap-2">
+            <button id="btnExportCSV" class="btn btn-outline-success btn-sm">Export CSV</button>
+            <button id="btnRefreshDeliveries" class="btn btn-outline-secondary btn-sm">Refresh</button>
+          </div>
+        </div>
+
+        <div class="table-responsive">
+          <table class="table table-sm table-hover align-middle">
+            <thead>
+              <tr>
+                <th>Time</th>
+                <th>Phone</th>
+                <th>Service</th>
+                <th>Status</th>
+                <th>Attempt</th>
+                <th>Error</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody id="deliveryTableBody"></tbody>
+          </table>
+        </div>
+
+        <div class="d-flex justify-content-between align-items-center">
+          <div>
+            <label class="small">Limit</label>
+            <select id="paginationLimit" class="form-select form-select-sm d-inline-block w-auto ms-2">
+              <option value="20">20</option>
+              <option value="50">50</option>
+              <option value="100">100</option>
+            </select>
+          </div>
+          <div class="btn-group btn-group-sm">
+            <button id="btnPrevPage" class="btn btn-outline-secondary">Prev</button>
+            <button id="btnNextPage" class="btn btn-outline-secondary">Next</button>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <div class="modal fade" id="confirmModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+      <div class="modal-content">
+        <div class="modal-header"><h5 class="modal-title">Confirm Action</h5></div>
+        <div class="modal-body"><p id="confirmText" class="mb-0"></p></div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cancel</button>
+          <button type="button" id="confirmSubmit" class="btn btn-danger btn-sm">Confirm</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal fade" id="detailModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog">
+      <div class="modal-content">
+        <div class="modal-header"><h5 class="modal-title">Delivery Detail</h5></div>
+        <div class="modal-body">
+          <pre id="detailPayload" class="small mb-0"></pre>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="toast-container position-fixed bottom-0 end-0 p-3">
+    <div id="appToast" class="toast" role="alert" aria-live="assertive" aria-atomic="true">
+      <div class="toast-header">
+        <strong class="me-auto">Dashboard</strong>
+        <small>just now</small>
+        <button type="button" class="btn-close" data-bs-dismiss="toast" aria-label="Close"></button>
+      </div>
+      <div class="toast-body" id="toastMessage"></div>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+  <script src="/admin/static/app.js"></script>
+</body>
+</html>

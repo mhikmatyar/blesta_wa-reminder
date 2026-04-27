@@ -2,6 +2,7 @@ package http
 
 import (
 	"net/http"
+	"path/filepath"
 
 	"github.com/gin-gonic/gin"
 
@@ -18,6 +19,11 @@ func NewRouter(application *app.App) *gin.Engine {
 
 	reminderHandler := handler.NewReminderHandler(application.ReminderService)
 	adminHandler := handler.NewAdminHandler(application.AdminService)
+
+	router.GET("/admin", middleware.AdminBasicAuth(application.Config), func(c *gin.Context) {
+		c.File(filepath.Join("web", "admin", "index.html"))
+	})
+	router.Static("/admin/static", filepath.Join("web", "admin"))
 
 	router.GET("/health/live", func(c *gin.Context) {
 		response.OK(c, http.StatusOK, gin.H{"status": "ok"})
@@ -48,6 +54,7 @@ func NewRouter(application *app.App) *gin.Engine {
 		admin.POST("/wa/logout", adminHandler.WALogout)
 		admin.GET("/stats/overview", adminHandler.StatsOverview)
 		admin.GET("/deliveries", adminHandler.ListDeliveries)
+		admin.GET("/deliveries/export.csv", adminHandler.ExportDeliveriesCSV)
 		admin.GET("/deliveries/:id", adminHandler.DeliveryDetail)
 		admin.POST("/queue/pause", adminHandler.PauseQueue)
 		admin.POST("/queue/resume", adminHandler.ResumeQueue)

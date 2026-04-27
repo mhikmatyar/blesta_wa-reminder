@@ -1,10 +1,13 @@
 package postgres
 
 import (
+	"bytes"
 	"context"
+	"encoding/csv"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -335,7 +338,7 @@ func (r *Repository) UpdateWAStatus(ctx context.Context, status model.WAConnecti
 		    phone_masked=COALESCE($2, phone_masked),
 		    wa_jid=COALESCE($3, wa_jid),
 		    last_seen_at=now(),
-		    last_connected_at=CASE WHEN $1='connected' THEN now() ELSE last_connected_at END,
+		    last_connected_at=CASE WHEN $1::wa_connection_status='connected'::wa_connection_status THEN now() ELSE last_connected_at END,
 		    updated_at=now()
 		WHERE id=1
 	`, status, phoneMasked, waJID)
@@ -407,17 +410,43 @@ func (r *Repository) GetStatsOverview(ctx context.Context, since time.Time) (map
 }
 
 func (r *Repository) ListDeliveries(ctx context.Context, status string, limit, offset int) ([]model.DeliveryListItem, error) {
+	return r.ListDeliveriesFiltered(ctx, status, "", nil, nil, limit, offset)
+}
+
+func (r *Repository) ListDeliveriesFiltered(ctx context.Context, status, search string, from, to *time.Time, limit, offset int) ([]model.DeliveryListItem, error) {
 	query := `
-		SELECT da.id, da.job_id, da.attempt_no, rj.phone_e164, rj.service_name, da.status, da.error_code, da.error_message, da.created_at, rj.sent_at
+		SELECT da.id, da.job_id, rj.external_id, da.attempt_no, rj.phone_e164, rj.service_name, da.status, da.error_code, da.error_message, da.created_at, rj.sent_at
 		FROM delivery_attempts da
 		JOIN reminder_jobs rj ON rj.id = da.job_id
 	`
 	args := []any{}
+	clauses := make([]string, 0, 4)
+	argPos := 1
 	if status != "" {
-		query += ` WHERE da.status = $1 `
+		clauses = append(clauses, fmt.Sprintf("da.status = $%d", argPos))
 		args = append(args, status)
+		argPos++
 	}
-	query += ` ORDER BY da.created_at DESC LIMIT $2 OFFSET $3`
+	if search != "" {
+		clauses = append(clauses, fmt.Sprintf("(rj.phone_e164 ILIKE $%d OR rj.service_name ILIKE $%d OR rj.external_id ILIKE $%d)", argPos, argPos, argPos))
+		args = append(args, "%"+search+"%")
+		argPos++
+	}
+	if from != nil {
+		clauses = append(clauses, fmt.Sprintf("da.created_at >= $%d", argPos))
+		args = append(args, from.UTC())
+		argPos++
+	}
+	if to != nil {
+		clauses = append(clauses, fmt.Sprintf("da.created_at <= $%d", argPos))
+		args = append(args, to.UTC())
+		argPos++
+	}
+	if len(clauses) > 0 {
+		query += " WHERE " + strings.Join(clauses, " AND ")
+	}
+
+	query += fmt.Sprintf(" ORDER BY da.created_at DESC LIMIT $%d OFFSET $%d", argPos, argPos+1)
 	args = append(args, limit, offset)
 
 	rows, err := r.db.Query(ctx, query, args...)
@@ -429,7 +458,7 @@ func (r *Repository) ListDeliveries(ctx context.Context, status string, limit, o
 	out := make([]model.DeliveryListItem, 0, limit)
 	for rows.Next() {
 		var item model.DeliveryListItem
-		if err := rows.Scan(&item.ID, &item.JobID, &item.AttemptNo, &item.Phone, &item.ServiceName, &item.Status, &item.ErrorCode, &item.ErrorMessage, &item.CreatedAt, &item.SentAt); err != nil {
+		if err := rows.Scan(&item.ID, &item.JobID, &item.ExternalID, &item.AttemptNo, &item.Phone, &item.ServiceName, &item.Status, &item.ErrorCode, &item.ErrorMessage, &item.CreatedAt, &item.SentAt); err != nil {
 			return nil, err
 		}
 		out = append(out, item)
@@ -437,21 +466,104 @@ func (r *Repository) ListDeliveries(ctx context.Context, status string, limit, o
 	return out, rows.Err()
 }
 
+func (r *Repository) CountDeliveriesFiltered(ctx context.Context, status, search string, from, to *time.Time) (int64, error) {
+	query := `
+		SELECT COUNT(*)
+		FROM delivery_attempts da
+		JOIN reminder_jobs rj ON rj.id = da.job_id
+	`
+	args := []any{}
+	clauses := make([]string, 0, 4)
+	argPos := 1
+	if status != "" {
+		clauses = append(clauses, fmt.Sprintf("da.status = $%d", argPos))
+		args = append(args, status)
+		argPos++
+	}
+	if search != "" {
+		clauses = append(clauses, fmt.Sprintf("(rj.phone_e164 ILIKE $%d OR rj.service_name ILIKE $%d OR rj.external_id ILIKE $%d)", argPos, argPos, argPos))
+		args = append(args, "%"+search+"%")
+		argPos++
+	}
+	if from != nil {
+		clauses = append(clauses, fmt.Sprintf("da.created_at >= $%d", argPos))
+		args = append(args, from.UTC())
+		argPos++
+	}
+	if to != nil {
+		clauses = append(clauses, fmt.Sprintf("da.created_at <= $%d", argPos))
+		args = append(args, to.UTC())
+	}
+	if len(clauses) > 0 {
+		query += " WHERE " + strings.Join(clauses, " AND ")
+	}
+	row := r.db.QueryRow(ctx, query, args...)
+	var total int64
+	if err := row.Scan(&total); err != nil {
+		return 0, err
+	}
+	return total, nil
+}
+
 func (r *Repository) GetDeliveryByID(ctx context.Context, id int64) (*model.DeliveryListItem, error) {
 	row := r.db.QueryRow(ctx, `
-		SELECT da.id, da.job_id, da.attempt_no, rj.phone_e164, rj.service_name, da.status, da.error_code, da.error_message, da.created_at, rj.sent_at
+		SELECT da.id, da.job_id, rj.external_id, da.attempt_no, rj.phone_e164, rj.service_name, da.status, da.error_code, da.error_message, da.created_at, rj.sent_at
 		FROM delivery_attempts da
 		JOIN reminder_jobs rj ON rj.id = da.job_id
 		WHERE da.id = $1
 	`, id)
 	var item model.DeliveryListItem
-	if err := row.Scan(&item.ID, &item.JobID, &item.AttemptNo, &item.Phone, &item.ServiceName, &item.Status, &item.ErrorCode, &item.ErrorMessage, &item.CreatedAt, &item.SentAt); err != nil {
+	if err := row.Scan(&item.ID, &item.JobID, &item.ExternalID, &item.AttemptNo, &item.Phone, &item.ServiceName, &item.Status, &item.ErrorCode, &item.ErrorMessage, &item.CreatedAt, &item.SentAt); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, ErrNotFound
 		}
 		return nil, err
 	}
 	return &item, nil
+}
+
+func (r *Repository) ExportDeliveriesCSV(ctx context.Context, status, search string, from, to *time.Time) ([]byte, error) {
+	items, err := r.ListDeliveriesFiltered(ctx, status, search, from, to, 5000, 0)
+	if err != nil {
+		return nil, err
+	}
+
+	buf := &bytes.Buffer{}
+	w := csv.NewWriter(buf)
+	_ = w.Write([]string{"id", "job_id", "external_id", "phone", "service_name", "status", "attempt_no", "error_code", "error_message", "created_at", "sent_at"})
+	for _, it := range items {
+		service := ""
+		if it.ServiceName != nil {
+			service = *it.ServiceName
+		}
+		errCode := ""
+		if it.ErrorCode != nil {
+			errCode = *it.ErrorCode
+		}
+		errMsg := ""
+		if it.ErrorMessage != nil {
+			errMsg = *it.ErrorMessage
+		}
+		sentAt := ""
+		if it.SentAt != nil {
+			sentAt = it.SentAt.Format(time.RFC3339)
+		}
+		_ = w.Write([]string{
+			fmt.Sprintf("%d", it.ID),
+			fmt.Sprintf("%d", it.JobID),
+			it.ExternalID,
+			it.Phone,
+			service,
+			it.Status,
+			fmt.Sprintf("%d", it.AttemptNo),
+			errCode,
+			errMsg,
+			it.CreatedAt.Format(time.RFC3339),
+			sentAt,
+		})
+	}
+	w.Flush()
+	return buf.Bytes(), w.Error()
 }
 
 func (r *Repository) CountSentSince(ctx context.Context, since time.Time) (int64, error) {

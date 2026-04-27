@@ -28,6 +28,7 @@ type WAQRCode struct {
 type DeliveryListItem struct {
 	ID           int64      `json:"id"`
 	JobID        int64      `json:"job_id"`
+	ExternalID   string     `json:"external_id"`
 	AttemptNo    int        `json:"attempt_no"`
 	Phone        string     `json:"phone"`
 	ServiceName  *string    `json:"service_name,omitempty"`

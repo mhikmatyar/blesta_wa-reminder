@@ -6,6 +6,7 @@ import (
 	"sync"
 	"time"
 
+	_ "github.com/lib/pq"
 	waLog "go.mau.fi/whatsmeow/util/log"
 
 	"go.mau.fi/whatsmeow"

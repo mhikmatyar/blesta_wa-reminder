@@ -1,0 +1,17 @@
+body {
+  background: #f7f8fa;
+}
+
+.qr-box {
+  max-width: 360px;
+  margin: 0 auto;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  background: #fff;
+  border: 1px dashed #d0d7de;
+  border-radius: 8px;
+}
+
+#statsCards .card strong {
+  font-size: 1.1rem;
+}

@@ -9,5 +9,8 @@ run:
 test:
 	go test ./...
 
+test-frontend:
+	node --test web/admin/app.test.js
+
 tidy:
 	go mod tidy
