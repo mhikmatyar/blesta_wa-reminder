@@ -2,15 +2,19 @@ package service
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sync"
 	"time"
 
 	_ "github.com/lib/pq"
 	waLog "go.mau.fi/whatsmeow/util/log"
+	"google.golang.org/protobuf/proto"
 
 	"go.mau.fi/whatsmeow"
+	waCompanionReg "go.mau.fi/whatsmeow/proto/waCompanionReg"
 	waProto "go.mau.fi/whatsmeow/proto/waE2E"
+	waStore "go.mau.fi/whatsmeow/store"
 	"go.mau.fi/whatsmeow/store/sqlstore"
 	waTypes "go.mau.fi/whatsmeow/types"
 	waEvents "go.mau.fi/whatsmeow/types/events"
@@ -27,10 +31,13 @@ type WAService struct {
 	repo   *postgres.Repository
 
 	mu          sync.RWMutex
+	container   *sqlstore.Container
 	client      *whatsmeow.Client
 	qrCode      string
 	qrExpiresAt time.Time
 }
+
+var ErrQRCodeUnavailable = errors.New("qr code unavailable")
 
 func NewWAService(ctx context.Context, cfg *config.Config, logger zerolog.Logger, repo *postgres.Repository) *WAService {
 	return &WAService{
@@ -41,24 +48,10 @@ func NewWAService(ctx context.Context, cfg *config.Config, logger zerolog.Logger
 }
 
 func (s *WAService) Start(ctx context.Context) error {
-	dbLog := waLog.Stdout("Database", "WARN", true)
-	container, err := sqlstore.New(ctx, "postgres", s.cfg.DatabaseURL, dbLog)
+	client, err := s.createClient(ctx)
 	if err != nil {
-		return fmt.Errorf("init whatsmeow sql store: %w", err)
+		return err
 	}
-
-	deviceStore, err := container.GetFirstDevice(ctx)
-	if err != nil {
-		return fmt.Errorf("get first device store: %w", err)
-	}
-
-	clientLog := waLog.Stdout("Client", "WARN", true)
-	client := whatsmeow.NewClient(deviceStore, clientLog)
-	client.AddEventHandler(s.handleEvent)
-
-	s.mu.Lock()
-	s.client = client
-	s.mu.Unlock()
 
 	if err := s.repo.UpdateWAStatus(ctx, model.WAStatusConnecting, nil, nil); err != nil {
 		s.logger.Warn().Err(err).Msg("failed to set WA status connecting")
@@ -81,6 +74,59 @@ func (s *WAService) Start(ctx context.Context) error {
 	return nil
 }
 
+func (s *WAService) ensureContainer(ctx context.Context) (*sqlstore.Container, error) {
+	s.mu.RLock()
+	container := s.container
+	s.mu.RUnlock()
+	if container != nil {
+		return container, nil
+	}
+
+	dbLog := waLog.Stdout("Database", "WARN", true)
+	newContainer, err := sqlstore.New(ctx, "postgres", s.cfg.DatabaseURL, dbLog)
+	if err != nil {
+		return nil, fmt.Errorf("init whatsmeow sql store: %w", err)
+	}
+
+	s.mu.Lock()
+	if s.container == nil {
+		s.container = newContainer
+	}
+	container = s.container
+	s.mu.Unlock()
+	return container, nil
+}
+
+func (s *WAService) configureCompanionIdentity() {
+	// Override companion identity to avoid "Other Device" label in Linked Devices.
+	waStore.SetOSInfo("Windows", waStore.GetWAVersion())
+	waStore.DeviceProps.PlatformType = waCompanionReg.DeviceProps_CHROME.Enum()
+	waStore.DeviceProps.RequireFullSync = proto.Bool(true)
+}
+
+func (s *WAService) createClient(ctx context.Context) (*whatsmeow.Client, error) {
+	container, err := s.ensureContainer(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	deviceStore, err := container.GetFirstDevice(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("get first device store: %w", err)
+	}
+
+	s.configureCompanionIdentity()
+
+	clientLog := waLog.Stdout("Client", "WARN", true)
+	client := whatsmeow.NewClient(deviceStore, clientLog)
+	client.AddEventHandler(s.handleEvent)
+
+	s.mu.Lock()
+	s.client = client
+	s.mu.Unlock()
+	return client, nil
+}
+
 func (s *WAService) IsConnected() bool {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
@@ -95,7 +141,7 @@ func (s *WAService) GetQR(ctx context.Context) (*model.WAQRCode, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	if s.qrCode == "" {
-		return nil, fmt.Errorf("qr code unavailable")
+		return nil, ErrQRCodeUnavailable
 	}
 	remaining := int(time.Until(s.qrExpiresAt).Seconds())
 	if remaining < 0 {
@@ -127,31 +173,60 @@ func (s *WAService) RefreshQR(ctx context.Context) error {
 	s.mu.RLock()
 	client := s.client
 	s.mu.RUnlock()
-	if client == nil {
-		return fmt.Errorf("client not initialized")
-	}
-	if client.Store.ID != nil {
-		return fmt.Errorf("device already paired")
+	if client == nil || client.Store.Deleted {
+		var err error
+		client, err = s.createClient(ctx)
+		if err != nil {
+			return err
+		}
 	}
 
-	qrChan, err := client.GetQRChannel(ctx)
-	if err != nil {
-		return fmt.Errorf("get QR channel: %w", err)
-	}
-	go s.handleQRChannel(ctx, qrChan)
+	var lastDeletedErr error
+	for attempt := 0; attempt < 2; attempt++ {
+		if client.Store.ID != nil {
+			return fmt.Errorf("device already paired")
+		}
 
-	s.mu.Lock()
-	s.qrCode = ""
-	s.qrExpiresAt = time.Time{}
-	s.mu.Unlock()
+		qrChan, err := client.GetQRChannel(ctx)
+		if err != nil {
+			if errors.Is(err, waStore.ErrDeviceDeleted) {
+				lastDeletedErr = err
+				client, err = s.createClient(ctx)
+				if err != nil {
+					return err
+				}
+				continue
+			}
+			return fmt.Errorf("get QR channel: %w", err)
+		}
+		go s.handleQRChannel(ctx, qrChan)
 
-	if client.IsConnected() {
-		client.Disconnect()
+		s.mu.Lock()
+		s.qrCode = ""
+		s.qrExpiresAt = time.Time{}
+		s.mu.Unlock()
+
+		if client.IsConnected() {
+			client.Disconnect()
+		}
+		if err := s.repo.UpdateWAStatus(ctx, model.WAStatusNeedQR, nil, nil); err != nil {
+			s.logger.Warn().Err(err).Msg("failed to set WA status need_qr")
+		}
+
+		if err := client.Connect(); err != nil {
+			if errors.Is(err, waStore.ErrDeviceDeleted) {
+				lastDeletedErr = err
+				client, err = s.createClient(ctx)
+				if err != nil {
+					return err
+				}
+				continue
+			}
+			return err
+		}
+		return nil
 	}
-	if err := s.repo.UpdateWAStatus(ctx, model.WAStatusNeedQR, nil, nil); err != nil {
-		s.logger.Warn().Err(err).Msg("failed to set WA status need_qr")
-	}
-	return client.Connect()
+	return fmt.Errorf("refresh qr failed: %w", lastDeletedErr)
 }
 
 func (s *WAService) Logout(ctx context.Context) error {
@@ -161,11 +236,25 @@ func (s *WAService) Logout(ctx context.Context) error {
 	if client == nil {
 		return fmt.Errorf("client not initialized")
 	}
-	if err := client.Logout(ctx); err != nil {
+	if err := client.Logout(ctx); err != nil && !errors.Is(err, whatsmeow.ErrNotLoggedIn) {
 		return err
 	}
 	if err := s.repo.ClearWASession(ctx); err != nil {
 		return err
+	}
+
+	s.mu.Lock()
+	s.qrCode = ""
+	s.qrExpiresAt = time.Time{}
+	s.mu.Unlock()
+
+	if _, err := s.createClient(ctx); err != nil {
+		return fmt.Errorf("reinitialize wa client after logout: %w", err)
+	}
+
+	// Automatically start a fresh QR cycle right after logout.
+	if err := s.RefreshQR(ctx); err != nil {
+		return fmt.Errorf("start qr cycle after logout: %w", err)
 	}
 	return nil
 }

@@ -152,7 +152,12 @@
 
     function renderQRCode(rawCode) {
       if (!rawCode) {
-        dom.qrCodeView.innerHTML = "-";
+        dom.qrCodeView.innerHTML = [
+          '<div class="d-flex flex-column align-items-center justify-content-center text-muted" style="min-height:220px">',
+          '  <div class="spinner-border spinner-border-sm mb-2" role="status" aria-hidden="true"></div>',
+          "  <small>Generating fresh QR...</small>",
+          "</div>",
+        ].join("");
         return;
       }
       dom.qrCodeView.innerHTML = "";
@@ -162,6 +167,11 @@
         height: 220,
         correctLevel: QRCode.CorrectLevel.M,
       });
+    }
+
+    function isQRUnavailableError(err) {
+      const msg = String((err && err.message) || "").toLowerCase();
+      return msg.includes("qr code unavailable");
     }
 
     function renderStats(data) {
@@ -206,17 +216,28 @@
         const statusRes = await api.get("/admin-api/v1/wa/status");
         renderStatus(statusRes.data);
         if ((statusRes.data.status || "").toLowerCase() === "need_qr") {
-          const qrRes = await api.get("/admin-api/v1/wa/qr");
-          renderQRCode(qrRes.data.qr_code || "");
-          const expires = Number(qrRes.data.expires_in_seconds || 0);
+          let qrCode = "";
+          let expires = 0;
+          try {
+            const qrRes = await api.get("/admin-api/v1/wa/qr");
+            qrCode = qrRes.data.qr_code || "";
+            expires = Number(qrRes.data.expires_in_seconds || 0);
+          } catch (err) {
+            if (!isQRUnavailableError(err)) {
+              throw err;
+            }
+          }
+          renderQRCode(qrCode);
           dom.qrExpires.textContent = expires;
-          if (expires <= 0) {
+          if (!qrCode || expires <= 0) {
             const state = store.get();
             const now = Date.now();
-            if (now-state.lastQRRefreshAt > 10000) {
+            if (now - state.lastQRRefreshAt > 3000) {
               refreshQR(false);
             }
           }
+        } else {
+          dom.qrExpires.textContent = "-";
         }
       } catch (err) {
         showToast("Failed loading WA status: " + err.message);

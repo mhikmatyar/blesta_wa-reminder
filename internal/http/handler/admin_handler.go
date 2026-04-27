@@ -7,6 +7,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	"github.com/blesta/wa-reminder/internal/domain/model"
 	"github.com/blesta/wa-reminder/internal/repository/postgres"
 	"github.com/blesta/wa-reminder/internal/response"
 	"github.com/blesta/wa-reminder/internal/service"
@@ -32,6 +33,13 @@ func (h *AdminHandler) WAStatus(c *gin.Context) {
 func (h *AdminHandler) WAQR(c *gin.Context) {
 	data, err := h.service.GetWAQR(c.Request.Context())
 	if err != nil {
+		if errors.Is(err, service.ErrQRCodeUnavailable) {
+			response.OK(c, http.StatusOK, model.WAQRCode{
+				QRCode:           "",
+				ExpiresInSeconds: 0,
+			})
+			return
+		}
 		response.Fail(c, http.StatusConflict, "CONFLICT", err.Error(), nil)
 		return
 	}
