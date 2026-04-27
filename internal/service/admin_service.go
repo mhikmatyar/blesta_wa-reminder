@@ -40,6 +40,10 @@ func (s *AdminService) ReconnectWA(ctx context.Context) error {
 	return s.waService.Reconnect(ctx)
 }
 
+func (s *AdminService) RefreshWAQR(ctx context.Context) error {
+	return s.waService.RefreshQR(ctx)
+}
+
 func (s *AdminService) LogoutWA(ctx context.Context) error {
 	return s.waService.Logout(ctx)
 }

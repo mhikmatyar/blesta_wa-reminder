@@ -114,6 +114,7 @@
       queuePaused: false,
       loading: false,
       confirmAction: null,
+      lastQRRefreshAt: 0,
     });
 
     const confirmModal = new bootstrap.Modal(document.getElementById("confirmModal"));
@@ -207,10 +208,31 @@
         if ((statusRes.data.status || "").toLowerCase() === "need_qr") {
           const qrRes = await api.get("/admin-api/v1/wa/qr");
           renderQRCode(qrRes.data.qr_code || "");
-          dom.qrExpires.textContent = qrRes.data.expires_in_seconds || 0;
+          const expires = Number(qrRes.data.expires_in_seconds || 0);
+          dom.qrExpires.textContent = expires;
+          if (expires <= 0) {
+            const state = store.get();
+            const now = Date.now();
+            if (now-state.lastQRRefreshAt > 10000) {
+              refreshQR(false);
+            }
+          }
         }
       } catch (err) {
         showToast("Failed loading WA status: " + err.message);
+      }
+    }
+
+    async function refreshQR(manual) {
+      try {
+        store.set({ lastQRRefreshAt: Date.now() });
+        await api.post("/admin-api/v1/wa/qr/refresh");
+        if (manual) {
+          showToast("QR refresh triggered");
+        }
+        setTimeout(fetchStatusAndQR, 1200);
+      } catch (err) {
+        showToast("Failed refreshing QR: " + err.message);
       }
     }
 
@@ -274,7 +296,7 @@
       }, 400));
 
       dom.btnRefreshDeliveries.addEventListener("click", fetchDeliveries);
-      dom.btnRefreshQR.addEventListener("click", fetchStatusAndQR);
+      dom.btnRefreshQR.addEventListener("click", () => refreshQR(true));
       dom.paginationLimit.addEventListener("change", () => {
         store.set({ limit: Number(dom.paginationLimit.value), page: 1 });
         fetchDeliveries();

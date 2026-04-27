@@ -123,6 +123,37 @@ func (s *WAService) Reconnect(ctx context.Context) error {
 	return client.Connect()
 }
 
+func (s *WAService) RefreshQR(ctx context.Context) error {
+	s.mu.RLock()
+	client := s.client
+	s.mu.RUnlock()
+	if client == nil {
+		return fmt.Errorf("client not initialized")
+	}
+	if client.Store.ID != nil {
+		return fmt.Errorf("device already paired")
+	}
+
+	qrChan, err := client.GetQRChannel(ctx)
+	if err != nil {
+		return fmt.Errorf("get QR channel: %w", err)
+	}
+	go s.handleQRChannel(ctx, qrChan)
+
+	s.mu.Lock()
+	s.qrCode = ""
+	s.qrExpiresAt = time.Time{}
+	s.mu.Unlock()
+
+	if client.IsConnected() {
+		client.Disconnect()
+	}
+	if err := s.repo.UpdateWAStatus(ctx, model.WAStatusNeedQR, nil, nil); err != nil {
+		s.logger.Warn().Err(err).Msg("failed to set WA status need_qr")
+	}
+	return client.Connect()
+}
+
 func (s *WAService) Logout(ctx context.Context) error {
 	s.mu.RLock()
 	client := s.client
@@ -199,6 +230,11 @@ func (s *WAService) handleQRChannel(ctx context.Context, qrChan <-chan whatsmeow
 				s.mu.Lock()
 				s.qrCode = evt.Code
 				s.qrExpiresAt = time.Now().Add(45 * time.Second)
+				s.mu.Unlock()
+			} else if evt.Event == "timeout" {
+				s.mu.Lock()
+				s.qrCode = ""
+				s.qrExpiresAt = time.Time{}
 				s.mu.Unlock()
 			}
 		}

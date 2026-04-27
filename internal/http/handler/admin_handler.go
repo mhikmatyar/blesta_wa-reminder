@@ -46,6 +46,14 @@ func (h *AdminHandler) WAReconnect(c *gin.Context) {
 	response.OK(c, http.StatusOK, gin.H{"status": "reconnecting"})
 }
 
+func (h *AdminHandler) WARefreshQR(c *gin.Context) {
+	if err := h.service.RefreshWAQR(c.Request.Context()); err != nil {
+		response.Fail(c, http.StatusInternalServerError, "INTERNAL_ERROR", err.Error(), nil)
+		return
+	}
+	response.OK(c, http.StatusOK, gin.H{"status": "qr_refreshed"})
+}
+
 func (h *AdminHandler) WALogout(c *gin.Context) {
 	if err := h.service.LogoutWA(c.Request.Context()); err != nil {
 		response.Fail(c, http.StatusInternalServerError, "INTERNAL_ERROR", err.Error(), nil)

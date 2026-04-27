@@ -50,6 +50,7 @@ func NewRouter(application *app.App) *gin.Engine {
 	{
 		admin.GET("/wa/status", adminHandler.WAStatus)
 		admin.GET("/wa/qr", adminHandler.WAQR)
+		admin.POST("/wa/qr/refresh", adminHandler.WARefreshQR)
 		admin.POST("/wa/reconnect", adminHandler.WAReconnect)
 		admin.POST("/wa/logout", adminHandler.WALogout)
 		admin.GET("/stats/overview", adminHandler.StatsOverview)
