@@ -35,6 +35,9 @@ type WAService struct {
 	client      *whatsmeow.Client
 	qrCode      string
 	qrExpiresAt time.Time
+
+	qrRefreshInProgress  bool
+	lastQRRefreshAttempt time.Time
 }
 
 var ErrQRCodeUnavailable = errors.New("qr code unavailable")
@@ -170,6 +173,31 @@ func (s *WAService) Reconnect(ctx context.Context) error {
 }
 
 func (s *WAService) RefreshQR(ctx context.Context) error {
+	s.mu.Lock()
+	// If a QR already exists and still valid, don't churn websocket/session.
+	if s.qrCode != "" && time.Until(s.qrExpiresAt) > 8*time.Second {
+		s.mu.Unlock()
+		return nil
+	}
+	// Deduplicate concurrent refresh requests.
+	if s.qrRefreshInProgress {
+		s.mu.Unlock()
+		return nil
+	}
+	// Rate-limit refresh attempts to avoid API/connection spam loops.
+	if !s.lastQRRefreshAttempt.IsZero() && time.Since(s.lastQRRefreshAttempt) < 5*time.Second {
+		s.mu.Unlock()
+		return nil
+	}
+	s.qrRefreshInProgress = true
+	s.lastQRRefreshAttempt = time.Now()
+	s.mu.Unlock()
+	defer func() {
+		s.mu.Lock()
+		s.qrRefreshInProgress = false
+		s.mu.Unlock()
+	}()
+
 	s.mu.RLock()
 	client := s.client
 	s.mu.RUnlock()
@@ -250,11 +278,6 @@ func (s *WAService) Logout(ctx context.Context) error {
 
 	if _, err := s.createClient(ctx); err != nil {
 		return fmt.Errorf("reinitialize wa client after logout: %w", err)
-	}
-
-	// Automatically start a fresh QR cycle right after logout.
-	if err := s.RefreshQR(ctx); err != nil {
-		return fmt.Errorf("start qr cycle after logout: %w", err)
 	}
 	return nil
 }

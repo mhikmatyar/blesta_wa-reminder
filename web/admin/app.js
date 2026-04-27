@@ -1,5 +1,6 @@
 (function (global) {
   "use strict";
+  const QR_MANUAL_REFRESH_COOLDOWN_MS = 3000;
 
   function createStateStore(initial) {
     let state = { ...initial };
@@ -73,6 +74,7 @@
       qrSection: document.getElementById("qrSection"),
       qrCodeView: document.getElementById("qrCodeView"),
       qrExpires: document.getElementById("qrExpires"),
+      qrManualHint: document.getElementById("qrManualHint"),
       filterRange: document.getElementById("filterRange"),
       filterStatus: document.getElementById("filterStatus"),
       filterSearch: document.getElementById("filterSearch"),
@@ -115,6 +117,8 @@
       loading: false,
       confirmAction: null,
       lastQRRefreshAt: 0,
+      qrRefreshInFlight: false,
+      qrVisibleByUser: false,
     });
 
     const confirmModal = new bootstrap.Modal(document.getElementById("confirmModal"));
@@ -134,7 +138,10 @@
     }
 
     function renderStatus(data) {
+      const current = store.get();
+      const prevStatus = current.status;
       const status = (data.status || "unknown").toLowerCase();
+      store.set({ status: status });
       dom.waStatusBadge.textContent = status;
       dom.waStatusBadge.className = "badge";
       if (status === "connected") dom.waStatusBadge.classList.add("text-bg-success");
@@ -144,20 +151,25 @@
       dom.waPhone.textContent = data.phone_masked || "-";
       dom.waLastSeen.textContent = formatDateTime(data.last_seen_at);
       dom.qrSection.classList.toggle("d-none", status !== "need_qr");
+
+      // Any transition into need_qr (including external logout from mobile) forces manual QR mode.
+      if (status === "need_qr" && prevStatus !== "need_qr") {
+        store.set({ qrVisibleByUser: false, qrRefreshInFlight: false });
+        setManualQRMode(true);
+      }
+
       if (status !== "need_qr") {
         dom.qrCodeView.innerHTML = "";
+        dom.qrExpires.textContent = "-";
         qrRenderer = null;
+        store.set({ qrVisibleByUser: false, qrRefreshInFlight: false });
+        setManualQRMode(false);
       }
     }
 
     function renderQRCode(rawCode) {
       if (!rawCode) {
-        dom.qrCodeView.innerHTML = [
-          '<div class="d-flex flex-column align-items-center justify-content-center text-muted" style="min-height:220px">',
-          '  <div class="spinner-border spinner-border-sm mb-2" role="status" aria-hidden="true"></div>',
-          "  <small>Generating fresh QR...</small>",
-          "</div>",
-        ].join("");
+        dom.qrCodeView.innerHTML = "";
         return;
       }
       dom.qrCodeView.innerHTML = "";
@@ -172,6 +184,16 @@
     function isQRUnavailableError(err) {
       const msg = String((err && err.message) || "").toLowerCase();
       return msg.includes("qr code unavailable");
+    }
+
+    function setManualQRMode(enabled) {
+      dom.qrCodeView.classList.toggle("d-none", enabled);
+      dom.qrManualHint.classList.toggle("d-none", !enabled);
+      if (enabled) {
+        dom.qrCodeView.innerHTML = "";
+        dom.qrExpires.textContent = "-";
+        qrRenderer = null;
+      }
     }
 
     function renderStats(data) {
@@ -216,6 +238,13 @@
         const statusRes = await api.get("/admin-api/v1/wa/status");
         renderStatus(statusRes.data);
         if ((statusRes.data.status || "").toLowerCase() === "need_qr") {
+          const state = store.get();
+          if (!state.qrVisibleByUser) {
+            setManualQRMode(true);
+            return;
+          }
+
+          setManualQRMode(false);
           let qrCode = "";
           let expires = 0;
           try {
@@ -229,14 +258,9 @@
           }
           renderQRCode(qrCode);
           dom.qrExpires.textContent = expires;
-          if (!qrCode || expires <= 0) {
-            const state = store.get();
-            const now = Date.now();
-            if (now - state.lastQRRefreshAt > 3000) {
-              refreshQR(false);
-            }
-          }
         } else {
+          store.set({ qrRefreshInFlight: false });
+          setManualQRMode(false);
           dom.qrExpires.textContent = "-";
         }
       } catch (err) {
@@ -245,15 +269,29 @@
     }
 
     async function refreshQR(manual) {
+      const state = store.get();
+      const now = Date.now();
+      if (state.qrRefreshInFlight) return;
+      if (now - state.lastQRRefreshAt < QR_MANUAL_REFRESH_COOLDOWN_MS) return;
+
       try {
-        store.set({ lastQRRefreshAt: Date.now() });
+        store.set({
+          lastQRRefreshAt: now,
+          qrRefreshInFlight: true,
+          qrVisibleByUser: true,
+        });
+        setManualQRMode(false);
         await api.post("/admin-api/v1/wa/qr/refresh");
         if (manual) {
           showToast("QR refresh triggered");
         }
         setTimeout(fetchStatusAndQR, 1200);
       } catch (err) {
-        showToast("Failed refreshing QR: " + err.message);
+        if (manual) {
+          showToast("Failed refreshing QR: " + err.message);
+        }
+      } finally {
+        store.set({ qrRefreshInFlight: false });
       }
     }
 
@@ -359,10 +397,13 @@
       dom.btnReconnect.addEventListener("click", () => askConfirm("Reconnect WhatsApp connection?", async () => {
         await api.post("/admin-api/v1/wa/reconnect");
         showToast("Reconnect triggered");
+        setManualQRMode(false);
         fetchStatusAndQR();
       }));
       dom.btnLogout.addEventListener("click", () => askConfirm("Logout active WA session?", async () => {
         await api.post("/admin-api/v1/wa/logout");
+        store.set({ qrVisibleByUser: false });
+        setManualQRMode(true);
         showToast("Logout completed");
         fetchStatusAndQR();
       }));
@@ -402,7 +443,7 @@
       fetchStatusAndQR();
       fetchStats();
       fetchDeliveries();
-      setInterval(fetchStatusAndQR, 3000);
+      setInterval(fetchStatusAndQR, 5000);
       setInterval(fetchStats, 12000);
     }
 
