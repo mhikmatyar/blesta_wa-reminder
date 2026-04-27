@@ -35,6 +35,7 @@ type WAService struct {
 	client      *whatsmeow.Client
 	qrCode      string
 	qrExpiresAt time.Time
+	qrCancel    context.CancelFunc
 
 	qrRefreshInProgress  bool
 	lastQRRefreshAttempt time.Time
@@ -61,11 +62,9 @@ func (s *WAService) Start(ctx context.Context) error {
 	}
 
 	if client.Store.ID == nil {
-		qrChan, err := client.GetQRChannel(ctx)
-		if err != nil {
-			return fmt.Errorf("get QR channel: %w", err)
+		if err := s.startQRListening(client); err != nil {
+			return err
 		}
-		go s.handleQRChannel(ctx, qrChan)
 		if err := s.repo.UpdateWAStatus(ctx, model.WAStatusNeedQR, nil, nil); err != nil {
 			s.logger.Warn().Err(err).Msg("failed to set WA status need_qr")
 		}
@@ -130,6 +129,30 @@ func (s *WAService) createClient(ctx context.Context) (*whatsmeow.Client, error)
 	return client, nil
 }
 
+func (s *WAService) startQRListening(client *whatsmeow.Client) error {
+	s.mu.Lock()
+	if s.qrCancel != nil {
+		s.qrCancel()
+		s.qrCancel = nil
+	}
+	s.qrCode = ""
+	s.qrExpiresAt = time.Time{}
+	s.mu.Unlock()
+
+	qrCtx, cancel := context.WithCancel(context.Background())
+	qrChan, err := client.GetQRChannel(qrCtx)
+	if err != nil {
+		cancel()
+		return fmt.Errorf("get QR channel: %w", err)
+	}
+
+	s.mu.Lock()
+	s.qrCancel = cancel
+	s.mu.Unlock()
+	go s.handleQRChannel(qrCtx, qrChan)
+	return nil
+}
+
 func (s *WAService) IsConnected() bool {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
@@ -184,11 +207,6 @@ func (s *WAService) RefreshQR(ctx context.Context) error {
 		s.mu.Unlock()
 		return nil
 	}
-	// Rate-limit refresh attempts to avoid API/connection spam loops.
-	if !s.lastQRRefreshAttempt.IsZero() && time.Since(s.lastQRRefreshAttempt) < 5*time.Second {
-		s.mu.Unlock()
-		return nil
-	}
 	s.qrRefreshInProgress = true
 	s.lastQRRefreshAttempt = time.Now()
 	s.mu.Unlock()
@@ -210,29 +228,39 @@ func (s *WAService) RefreshQR(ctx context.Context) error {
 	}
 
 	var lastDeletedErr error
-	for attempt := 0; attempt < 2; attempt++ {
+	for attempt := 0; attempt < 3; attempt++ {
 		if client.Store.ID != nil {
-			return fmt.Errorf("device already paired")
-		}
-
-		qrChan, err := client.GetQRChannel(ctx)
-		if err != nil {
-			if errors.Is(err, waStore.ErrDeviceDeleted) {
-				lastDeletedErr = err
+			// If DB/session status says need_qr but store still has an ID and client isn't logged in,
+			// the local store is stale (e.g. external logout). Recreate it automatically.
+			if !client.IsLoggedIn() {
+				client.Disconnect()
+				if client.Store.ID != nil && !client.Store.Deleted {
+					if err := client.Store.Delete(ctx); err != nil {
+						return fmt.Errorf("clear stale wa store before qr refresh: %w", err)
+					}
+				}
+				var err error
 				client, err = s.createClient(ctx)
 				if err != nil {
 					return err
 				}
 				continue
 			}
-			return fmt.Errorf("get QR channel: %w", err)
+			return fmt.Errorf("device already paired")
 		}
-		go s.handleQRChannel(ctx, qrChan)
 
-		s.mu.Lock()
-		s.qrCode = ""
-		s.qrExpiresAt = time.Time{}
-		s.mu.Unlock()
+		if err := s.startQRListening(client); err != nil {
+			if errors.Is(err, waStore.ErrDeviceDeleted) {
+				lastDeletedErr = err
+				var err error
+				client, err = s.createClient(ctx)
+				if err != nil {
+					return err
+				}
+				continue
+			}
+			return err
+		}
 
 		if client.IsConnected() {
 			client.Disconnect()
@@ -264,8 +292,20 @@ func (s *WAService) Logout(ctx context.Context) error {
 	if client == nil {
 		return fmt.Errorf("client not initialized")
 	}
-	if err := client.Logout(ctx); err != nil && !errors.Is(err, whatsmeow.ErrNotLoggedIn) {
-		return err
+	logoutErr := client.Logout(ctx)
+	if logoutErr != nil && !errors.Is(logoutErr, whatsmeow.ErrNotLoggedIn) {
+		return logoutErr
+	}
+
+	// External logout can cause ErrNotLoggedIn while local store is still present.
+	// Ensure stale local store is removed so QR re-pair can start cleanly.
+	if errors.Is(logoutErr, whatsmeow.ErrNotLoggedIn) {
+		client.Disconnect()
+		if client.Store.ID != nil && !client.Store.Deleted {
+			if err := client.Store.Delete(ctx); err != nil {
+				return fmt.Errorf("clear stale local store after not-logged-in logout: %w", err)
+			}
+		}
 	}
 	if err := s.repo.ClearWASession(ctx); err != nil {
 		return err

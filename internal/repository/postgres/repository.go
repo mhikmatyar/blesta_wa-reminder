@@ -320,6 +320,10 @@ func (r *Repository) IsPhoneBlocked(ctx context.Context, phone string) (bool, er
 }
 
 func (r *Repository) GetWAStatus(ctx context.Context) (*model.WASession, error) {
+	if err := r.ensureWASessionSingleton(ctx); err != nil {
+		return nil, err
+	}
+
 	row := r.db.QueryRow(ctx, `
 		SELECT connection_status, phone_masked, wa_jid, last_connected_at, last_seen_at
 		FROM wa_session_singleton WHERE id=1
@@ -332,6 +336,10 @@ func (r *Repository) GetWAStatus(ctx context.Context) (*model.WASession, error) 
 }
 
 func (r *Repository) UpdateWAStatus(ctx context.Context, status model.WAConnectionStatus, phoneMasked, waJID *string) error {
+	if err := r.ensureWASessionSingleton(ctx); err != nil {
+		return err
+	}
+
 	_, err := r.db.Exec(ctx, `
 		UPDATE wa_session_singleton
 		SET connection_status=$1,
@@ -346,12 +354,28 @@ func (r *Repository) UpdateWAStatus(ctx context.Context, status model.WAConnecti
 }
 
 func (r *Repository) ClearWASession(ctx context.Context) error {
+	if err := r.ensureWASessionSingleton(ctx); err != nil {
+		return err
+	}
+
 	_, err := r.db.Exec(ctx, `
 		UPDATE wa_session_singleton
 		SET connection_status='need_qr', phone_e164=NULL, phone_masked=NULL, wa_jid=NULL, push_name=NULL, updated_at=now()
 		WHERE id=1
 	`)
 	return err
+}
+
+func (r *Repository) ensureWASessionSingleton(ctx context.Context) error {
+	_, err := r.db.Exec(ctx, `
+		INSERT INTO wa_session_singleton (id, connection_status, is_active)
+		VALUES (1, 'need_qr', true)
+		ON CONFLICT (id) DO NOTHING
+	`)
+	if err != nil {
+		return fmt.Errorf("ensure wa_session_singleton row: %w", err)
+	}
+	return nil
 }
 
 func (r *Repository) SetAppSetting(ctx context.Context, key string, value any) error {
