@@ -26,7 +26,12 @@ func NewRouter(application *app.App) *gin.Engine {
 	adminHandler := handler.NewAdminHandler(application.AdminService)
 
 	router.GET("/admin", middleware.AdminBasicAuth(application.Config), func(c *gin.Context) {
-		c.FileFromFS("index.html", http.FS(adminAssetsFS))
+		indexHTML, readErr := fs.ReadFile(webassets.FS, "admin/index.html")
+		if readErr != nil {
+			response.Fail(c, http.StatusInternalServerError, "ADMIN_UI_UNAVAILABLE", "admin UI not available", nil)
+			return
+		}
+		c.Data(http.StatusOK, "text/html; charset=utf-8", indexHTML)
 	})
 	router.StaticFS("/admin/static", http.FS(adminAssetsFS))
 
