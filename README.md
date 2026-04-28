@@ -81,6 +81,7 @@ Server default akan jalan di `:8080`.
 - Kontrak API: `docs/api-contract.md`
 - Skema DDL: `docs/ddl.sql`
 - Backlog point 10-11: `docs/plan-10-11-backlog.md`
+- Deploy VPS + CI/CD: `docs/deploy-vps.md`
 
 ## Testing
 

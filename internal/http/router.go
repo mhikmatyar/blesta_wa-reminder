@@ -1,8 +1,8 @@
 package http
 
 import (
+	"io/fs"
 	"net/http"
-	"path/filepath"
 
 	"github.com/gin-gonic/gin"
 
@@ -10,20 +10,25 @@ import (
 	"github.com/blesta/wa-reminder/internal/http/handler"
 	"github.com/blesta/wa-reminder/internal/http/middleware"
 	"github.com/blesta/wa-reminder/internal/response"
+	webassets "github.com/blesta/wa-reminder/web"
 )
 
 func NewRouter(application *app.App) *gin.Engine {
 	router := gin.New()
 	router.Use(gin.Recovery())
 	router.Use(middleware.RequestID())
+	adminAssetsFS, err := fs.Sub(webassets.FS, "admin")
+	if err != nil {
+		panic("failed to initialize embedded admin assets")
+	}
 
 	reminderHandler := handler.NewReminderHandler(application.ReminderService)
 	adminHandler := handler.NewAdminHandler(application.AdminService)
 
 	router.GET("/admin", middleware.AdminBasicAuth(application.Config), func(c *gin.Context) {
-		c.File(filepath.Join("web", "admin", "index.html"))
+		c.FileFromFS("index.html", http.FS(adminAssetsFS))
 	})
-	router.Static("/admin/static", filepath.Join("web", "admin"))
+	router.StaticFS("/admin/static", http.FS(adminAssetsFS))
 
 	router.GET("/health/live", func(c *gin.Context) {
 		response.OK(c, http.StatusOK, gin.H{"status": "ok"})
