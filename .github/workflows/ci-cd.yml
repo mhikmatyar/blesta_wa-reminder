@@ -51,7 +51,15 @@ jobs:
       - name: Activate new binary and restart service
         run: |
           ssh -p "${{ secrets.VPS_PORT }}" "${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}" \
-            "chmod +x /opt/blesta-wa-reminder/blesta-wa-reminder.new && \
+            "set -euo pipefail && \
+             chmod +x /opt/blesta-wa-reminder/blesta-wa-reminder.new && \
              mv /opt/blesta-wa-reminder/blesta-wa-reminder.new /opt/blesta-wa-reminder/blesta-wa-reminder && \
-             systemctl restart wa-reminder && \
-             systemctl is-active --quiet wa-reminder"
+             sudo systemctl restart wa-reminder && \
+             sudo systemctl is-active --quiet wa-reminder"
+
+      - name: Debug service logs when failed
+        if: failure()
+        run: |
+          ssh -p "${{ secrets.VPS_PORT }}" "${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}" \
+            "sudo systemctl status wa-reminder --no-pager -l || true; \
+             sudo journalctl -u wa-reminder -n 120 --no-pager || true"

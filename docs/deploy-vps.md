@@ -80,13 +80,39 @@ Output:
 - Private key: `~/.ssh/gha_wa_reminder`
 - Public key: `~/.ssh/gha_wa_reminder.pub`
 
-### Pasang public key ke VPS (user `root`)
+### Pasang public key ke VPS (user `ubuntu`)
 
 ```bash
-ssh-copy-id -i ~/.ssh/gha_wa_reminder.pub -p <PORT_SSH> root@<HOST_VPS>
+ssh-copy-id -i ~/.ssh/gha_wa_reminder.pub -p <PORT_SSH> ubuntu@<HOST_VPS>
 ```
 
-Atau manual append ke `/root/.ssh/authorized_keys`.
+Atau manual append ke `/home/ubuntu/.ssh/authorized_keys`.
+
+### Konfigurasi sudoers untuk restart service (non-interactive)
+
+Cari path `systemctl`:
+
+```bash
+which systemctl
+```
+
+Buat file sudoers:
+
+```bash
+sudo visudo -f /etc/sudoers.d/wa-reminder-deploy
+```
+
+Isi (sesuaikan path `systemctl` sesuai output `which`):
+
+```text
+ubuntu ALL=(ALL) NOPASSWD:/usr/bin/systemctl restart wa-reminder,/usr/bin/systemctl status wa-reminder,/usr/bin/systemctl is-active wa-reminder
+```
+
+Validasi:
+
+```bash
+sudo visudo -cf /etc/sudoers.d/wa-reminder-deploy
+```
 
 ## 4) GitHub Repository Secrets
 
@@ -96,7 +122,7 @@ Tambah secrets berikut:
 
 - `VPS_HOST`: domain atau IP VPS
 - `VPS_PORT`: port SSH VPS (contoh `22`)
-- `VPS_USER`: `root`
+- `VPS_USER`: `ubuntu`
 - `VPS_SSH_KEY`: isi private key dari `~/.ssh/gha_wa_reminder`
 
 Cara mengambil private key (copy seluruh isi termasuk header/footer):
@@ -120,7 +146,7 @@ atau cek:
 sudo rg "^Port" /etc/ssh/sshd_config
 ```
 
-- User deploy: ditetapkan `root` sesuai keputusan deploy.
+- User deploy: gunakan `ubuntu` (sesuai setup SSH key di atas).
 
 ## 6) Checklist verifikasi setelah deploy
 
