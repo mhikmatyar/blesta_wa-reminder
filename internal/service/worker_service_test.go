@@ -39,3 +39,23 @@ func TestPickRetry(t *testing.T) {
 		t.Fatalf("pickRetry overflow = %d", got)
 	}
 }
+
+func TestShouldProcessForWAStatus(t *testing.T) {
+	tests := []struct {
+		name   string
+		status model.WAConnectionStatus
+		want   bool
+	}{
+		{name: "connected", status: model.WAStatusConnected, want: true},
+		{name: "need_qr", status: model.WAStatusNeedQR, want: false},
+		{name: "connecting", status: model.WAStatusConnecting, want: false},
+		{name: "disconnected", status: model.WAStatusDisconnected, want: false},
+		{name: "error", status: model.WAStatusError, want: false},
+	}
+
+	for _, tt := range tests {
+		if got := shouldProcessForWAStatus(tt.status); got != tt.want {
+			t.Fatalf("%s: shouldProcessForWAStatus(%q) = %v, want %v", tt.name, tt.status, got, tt.want)
+		}
+	}
+}

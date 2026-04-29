@@ -58,6 +58,14 @@ func (s *WorkerService) runOnce(ctx context.Context) error {
 	if settings.QueuePaused {
 		return nil
 	}
+	waStatus, err := s.repo.GetWAStatus(ctx)
+	if err != nil {
+		return err
+	}
+	if !shouldProcessForWAStatus(waStatus.ConnectionStatus) {
+		s.logger.Info().Str("wa_status", string(waStatus.ConnectionStatus)).Msg("worker skip cycle: wa not connected")
+		return nil
+	}
 
 	jobs, err := s.repo.PickDueJobs(ctx, s.cfg.WorkerBatchSize, s.cfg.WorkerID)
 	if err != nil {
@@ -193,6 +201,10 @@ func isValidPhone(phone string) bool {
 		}
 	}
 	return true
+}
+
+func shouldProcessForWAStatus(status model.WAConnectionStatus) bool {
+	return status == model.WAStatusConnected
 }
 
 func buildMessage(job model.ReminderJob) string {
