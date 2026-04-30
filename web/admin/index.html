@@ -54,6 +54,48 @@
       <div class="col-6 col-md-2"><div class="card p-2"><small>Success</small><strong id="statSuccessRate">0%</strong></div></div>
     </section>
 
+    <section class="card mb-3">
+      <div class="card-body">
+        <div class="d-flex justify-content-between align-items-start flex-wrap gap-2">
+          <div>
+            <h2 class="h6 mb-1">Template Pesan Reminder</h2>
+            <p class="text-muted small mb-0">Edit pesan untuk notifikasi H-30, H-15, dan H-7.</p>
+          </div>
+          <small class="text-muted">Hanya menerima placeholder yang didukung.</small>
+        </div>
+        <div id="templateAcceptedPlaceholders" class="alert alert-info small mt-3 mb-3">
+          Accepted placeholders: {{customer_name}}, {{service_name}}, {{expired_date}}
+        </div>
+
+        <div class="row g-3">
+          <div class="col-12">
+            <label for="templateH30" class="form-label form-label-sm mb-1">Reminder 30 hari (<code>expiry_h30</code>)</label>
+            <textarea id="templateH30" class="form-control form-control-sm template-textarea" rows="3"></textarea>
+            <div class="d-flex justify-content-between align-items-center mt-1">
+              <small id="templateH30UpdatedAt" class="text-muted">updated_at: -</small>
+              <button id="btnSaveTemplateH30" class="btn btn-primary btn-sm">Simpan</button>
+            </div>
+          </div>
+          <div class="col-12">
+            <label for="templateH15" class="form-label form-label-sm mb-1">Reminder 15 hari (<code>expiry_h15</code>)</label>
+            <textarea id="templateH15" class="form-control form-control-sm template-textarea" rows="3"></textarea>
+            <div class="d-flex justify-content-between align-items-center mt-1">
+              <small id="templateH15UpdatedAt" class="text-muted">updated_at: -</small>
+              <button id="btnSaveTemplateH15" class="btn btn-primary btn-sm">Simpan</button>
+            </div>
+          </div>
+          <div class="col-12">
+            <label for="templateH7" class="form-label form-label-sm mb-1">Reminder 7 hari (<code>expiry_h7</code>)</label>
+            <textarea id="templateH7" class="form-control form-control-sm template-textarea" rows="3"></textarea>
+            <div class="d-flex justify-content-between align-items-center mt-1">
+              <small id="templateH7UpdatedAt" class="text-muted">updated_at: -</small>
+              <button id="btnSaveTemplateH7" class="btn btn-primary btn-sm">Simpan</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
     <section class="card">
       <div class="card-body">
         <div class="row g-2 align-items-end mb-3">

@@ -74,6 +74,44 @@ Semua endpoint admin pakai Basic Auth.
 - `POST /queue/pause`
 - `POST /queue/resume`
 
+### Reminder Templates
+- `GET /reminder-templates`
+- `PUT /reminder-templates/{template_code}`
+
+Contoh response `GET /reminder-templates`:
+```json
+{
+  "success": true,
+  "data": {
+    "accepted_placeholders": [
+      "{{customer_name}}",
+      "{{service_name}}",
+      "{{expired_date}}"
+    ],
+    "items": [
+      {
+        "template_code": "expiry_h30",
+        "label": "30 hari",
+        "message_template": "Halo {{customer_name}}, ... {{expired_date}}",
+        "updated_at": "2026-04-30T08:00:00Z"
+      }
+    ]
+  }
+}
+```
+
+Contoh request `PUT /reminder-templates/expiry_h30`:
+```json
+{
+  "message_template": "Halo {{customer_name}}, ini pengingat H-30 untuk layanan {{service_name}}. Masa aktif akan berakhir pada {{expired_date}}."
+}
+```
+
+Aturan:
+- `template_code` yang didukung hanya: `expiry_h30`, `expiry_h15`, `expiry_h7`.
+- `message_template` wajib non-empty (setelah trim).
+- Jika runtime menemukan template kosong/tidak ditemukan, worker fallback ke hardcoded message.
+
 ## Health
 - `GET /health/live`
 - `GET /health/ready`
@@ -99,6 +137,7 @@ Semua endpoint admin pakai Basic Auth.
 - Typing status dikirim 5 detik sebelum pengiriman.
 - Delay acak antar pesan mengikuti runtime setting (`delay_min_seconds`-`delay_max_seconds`).
 - Runtime setting diambil dari tabel `app_settings` dengan fallback `.env`.
+- Placeholder `{{expired_date}}` dirender dalam format `DD/MM/YYYY` zona WIB.
 - Point frontend dashboard penuh dan hardening lanjutan dicatat terpisah (tidak dieksekusi di fase ini).
 
 ## Point 10 Dashboard (MVP)

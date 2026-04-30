@@ -145,7 +145,7 @@ func (s *WorkerService) processJob(ctx context.Context, job model.ReminderJob, s
 		return s.repo.UpsertUnreachable(ctx, job.PhoneE164, canonicalJID, "WA_JID_INVALID", err.Error(), s.cfg.UnreachableRecheckDays, &job.ID)
 	}
 
-	message := buildMessage(job)
+	message := s.buildMessage(ctx, job)
 	sendCtx, cancel := context.WithTimeout(ctx, 40*time.Second)
 	defer cancel()
 
@@ -159,6 +159,18 @@ func (s *WorkerService) processJob(ctx context.Context, job model.ReminderJob, s
 	}
 
 	return s.repo.MarkJobSent(ctx, job.ID, msgID, settings.TypingDurationMS)
+}
+
+func (s *WorkerService) buildMessage(ctx context.Context, job model.ReminderJob) string {
+	template, err := s.repo.GetReminderTemplateByCode(ctx, job.TemplateCode)
+	if err != nil {
+		return buildMessageFallback(job)
+	}
+	rendered := renderMessageTemplate(template.MessageTemplate, job, s.cfg.AppTimeZone)
+	if strings.TrimSpace(rendered) == "" {
+		return buildMessageFallback(job)
+	}
+	return rendered
 }
 
 func pickRetry(settings model.QueueRuntimeSettings, attemptCount int) int {
@@ -207,7 +219,7 @@ func shouldProcessForWAStatus(status model.WAConnectionStatus) bool {
 	return status == model.WAStatusConnected
 }
 
-func buildMessage(job model.ReminderJob) string {
+func buildMessageFallback(job model.ReminderJob) string {
 	customerName := "Pelanggan"
 	if job.CustomerName != nil && *job.CustomerName != "" {
 		customerName = *job.CustomerName
@@ -217,4 +229,31 @@ func buildMessage(job model.ReminderJob) string {
 		serviceName = *job.ServiceName
 	}
 	return fmt.Sprintf("Halo %s, ini pengingat untuk layanan %s. Mohon cek masa aktif layanan Anda. Terima kasih.", customerName, serviceName)
+}
+
+func renderMessageTemplate(messageTemplate string, job model.ReminderJob, timeZone string) string {
+	customerName := "Pelanggan"
+	if job.CustomerName != nil && strings.TrimSpace(*job.CustomerName) != "" {
+		customerName = strings.TrimSpace(*job.CustomerName)
+	}
+
+	serviceName := "layanan"
+	if job.ServiceName != nil && strings.TrimSpace(*job.ServiceName) != "" {
+		serviceName = strings.TrimSpace(*job.ServiceName)
+	}
+
+	expiredDate := "-"
+	if job.ExpiredAt != nil {
+		loc, err := time.LoadLocation(timeZone)
+		if err != nil {
+			loc = time.FixedZone("WIB", 7*60*60)
+		}
+		expiredDate = job.ExpiredAt.In(loc).Format("02/01/2006")
+	}
+
+	rendered := messageTemplate
+	rendered = strings.ReplaceAll(rendered, "{{customer_name}}", customerName)
+	rendered = strings.ReplaceAll(rendered, "{{service_name}}", serviceName)
+	rendered = strings.ReplaceAll(rendered, "{{expired_date}}", expiredDate)
+	return rendered
 }
