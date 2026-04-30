@@ -54,9 +54,20 @@
       <div class="col-6 col-md-2"><div class="card p-2"><small>Success</small><strong id="statSuccessRate">0%</strong></div></div>
     </section>
 
-    <section class="card">
-      <div class="card-body">
-        <div class="row g-2 align-items-end mb-3">
+    <ul class="nav nav-tabs mb-3" id="dashboardTabs" role="tablist">
+      <li class="nav-item" role="presentation">
+        <button class="nav-link active" id="logs-tab" data-bs-toggle="tab" data-bs-target="#logs-pane" type="button" role="tab" aria-controls="logs-pane" aria-selected="true">Logs</button>
+      </li>
+      <li class="nav-item" role="presentation">
+        <button class="nav-link" id="templates-tab" data-bs-toggle="tab" data-bs-target="#templates-pane" type="button" role="tab" aria-controls="templates-pane" aria-selected="false">Templates</button>
+      </li>
+    </ul>
+
+    <div class="tab-content" id="dashboardTabContent">
+      <div class="tab-pane fade show active" id="logs-pane" role="tabpanel" aria-labelledby="logs-tab" tabindex="0">
+        <section class="card mb-3">
+          <div class="card-body">
+            <div class="row g-2 align-items-end mb-3">
           <div class="col-md-2">
             <label class="form-label form-label-sm">Range</label>
             <select id="filterRange" class="form-select form-select-sm">
@@ -91,47 +102,93 @@
           </div>
         </div>
 
-        <div class="d-flex justify-content-between align-items-center mb-2">
-          <div class="small text-muted" id="deliveryMeta">-</div>
-          <div class="d-flex gap-2">
-            <button id="btnExportCSV" class="btn btn-outline-success btn-sm">Export CSV</button>
-            <button id="btnRefreshDeliveries" class="btn btn-outline-secondary btn-sm">Refresh</button>
-          </div>
-        </div>
+            <div class="d-flex justify-content-between align-items-center mb-2">
+              <div class="small text-muted" id="deliveryMeta">-</div>
+              <div class="d-flex gap-2">
+                <button id="btnExportCSV" class="btn btn-outline-success btn-sm">Export CSV</button>
+                <button id="btnRefreshDeliveries" class="btn btn-outline-secondary btn-sm">Refresh</button>
+              </div>
+            </div>
 
-        <div class="table-responsive">
-          <table class="table table-sm table-hover align-middle">
-            <thead>
-              <tr>
-                <th>Time</th>
-                <th>Phone</th>
-                <th>Service</th>
-                <th>Status</th>
-                <th>Attempt</th>
-                <th>Error</th>
-                <th></th>
-              </tr>
-            </thead>
-            <tbody id="deliveryTableBody"></tbody>
-          </table>
-        </div>
+            <div class="table-responsive">
+              <table class="table table-sm table-hover align-middle">
+                <thead>
+                  <tr>
+                    <th>Time</th>
+                    <th>Phone</th>
+                    <th>Service</th>
+                    <th>Status</th>
+                    <th>Attempt</th>
+                    <th>Error</th>
+                    <th></th>
+                  </tr>
+                </thead>
+                <tbody id="deliveryTableBody"></tbody>
+              </table>
+            </div>
 
-        <div class="d-flex justify-content-between align-items-center">
-          <div>
-            <label class="small">Limit</label>
-            <select id="paginationLimit" class="form-select form-select-sm d-inline-block w-auto ms-2">
-              <option value="20">20</option>
-              <option value="50">50</option>
-              <option value="100">100</option>
-            </select>
+            <div class="d-flex justify-content-between align-items-center">
+              <div>
+                <label class="small">Limit</label>
+                <select id="paginationLimit" class="form-select form-select-sm d-inline-block w-auto ms-2">
+                  <option value="20">20</option>
+                  <option value="50">50</option>
+                  <option value="100">100</option>
+                </select>
+              </div>
+              <div class="btn-group btn-group-sm">
+                <button id="btnPrevPage" class="btn btn-outline-secondary">Prev</button>
+                <button id="btnNextPage" class="btn btn-outline-secondary">Next</button>
+              </div>
+            </div>
           </div>
-          <div class="btn-group btn-group-sm">
-            <button id="btnPrevPage" class="btn btn-outline-secondary">Prev</button>
-            <button id="btnNextPage" class="btn btn-outline-secondary">Next</button>
-          </div>
-        </div>
+        </section>
       </div>
-    </section>
+
+      <div class="tab-pane fade" id="templates-pane" role="tabpanel" aria-labelledby="templates-tab" tabindex="0">
+        <section class="card mb-3">
+          <div class="card-body">
+            <div class="d-flex justify-content-between align-items-start flex-wrap gap-2">
+              <div>
+                <h2 class="h6 mb-1">Template Pesan Reminder</h2>
+                <p class="text-muted small mb-0">Edit pesan untuk notifikasi H-30, H-15, dan H-7.</p>
+              </div>
+              <small class="text-muted">Hanya menerima placeholder yang didukung.</small>
+            </div>
+            <div id="templateAcceptedPlaceholders" class="alert alert-info small mt-3 mb-3">
+              Accepted placeholders: {{customer_name}}, {{service_name}}, {{expired_date}}
+            </div>
+
+            <div class="row g-3">
+              <div class="col-12">
+                <label for="templateH30" class="form-label form-label-sm mb-1">Reminder 30 hari (<code>expiry_h30</code>)</label>
+                <textarea id="templateH30" class="form-control form-control-sm template-textarea" rows="3"></textarea>
+                <div class="d-flex justify-content-between align-items-center mt-1">
+                  <small id="templateH30UpdatedAt" class="text-muted">updated_at: -</small>
+                  <button id="btnSaveTemplateH30" class="btn btn-primary btn-sm">Simpan</button>
+                </div>
+              </div>
+              <div class="col-12">
+                <label for="templateH15" class="form-label form-label-sm mb-1">Reminder 15 hari (<code>expiry_h15</code>)</label>
+                <textarea id="templateH15" class="form-control form-control-sm template-textarea" rows="3"></textarea>
+                <div class="d-flex justify-content-between align-items-center mt-1">
+                  <small id="templateH15UpdatedAt" class="text-muted">updated_at: -</small>
+                  <button id="btnSaveTemplateH15" class="btn btn-primary btn-sm">Simpan</button>
+                </div>
+              </div>
+              <div class="col-12">
+                <label for="templateH7" class="form-label form-label-sm mb-1">Reminder 7 hari (<code>expiry_h7</code>)</label>
+                <textarea id="templateH7" class="form-control form-control-sm template-textarea" rows="3"></textarea>
+                <div class="d-flex justify-content-between align-items-center mt-1">
+                  <small id="templateH7UpdatedAt" class="text-muted">updated_at: -</small>
+                  <button id="btnSaveTemplateH7" class="btn btn-primary btn-sm">Simpan</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+      </div>
+    </div>
   </main>
 
   <div class="modal fade" id="confirmModal" tabindex="-1" aria-hidden="true">

@@ -15,3 +15,7 @@ body {
 #statsCards .card strong {
   font-size: 1.1rem;
 }
+
+.template-textarea {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+}

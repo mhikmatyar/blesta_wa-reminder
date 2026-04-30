@@ -71,3 +71,9 @@ type QueueRuntimeSettings struct {
 	SendWindowEnd    string
 	QueuePaused      bool
 }
+
+type ReminderMessageTemplate struct {
+	TemplateCode    string    `json:"template_code"`
+	MessageTemplate string    `json:"message_template"`
+	UpdatedAt       time.Time `json:"updated_at"`
+}

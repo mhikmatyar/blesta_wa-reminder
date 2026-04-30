@@ -19,6 +19,12 @@ import (
 
 var ErrNotFound = errors.New("not found")
 
+var allowedReminderTemplateCodes = map[string]struct{}{
+	"expiry_h30": {},
+	"expiry_h15": {},
+	"expiry_h7":  {},
+}
+
 type Repository struct {
 	db *pgxpool.Pool
 }
@@ -139,7 +145,7 @@ func (r *Repository) PickDueJobs(ctx context.Context, batch int, workerID string
 		SET status='processing', locked_by=$2, locked_at=now(), updated_at=now()
 		FROM picked
 		WHERE j.id=picked.id
-		RETURNING j.id, j.job_uuid, j.client_id, j.external_id, j.phone_e164, j.template_code, j.template_vars, j.status, j.send_at, j.attempt_count, j.max_attempts, j.service_name
+		RETURNING j.id, j.job_uuid, j.client_id, j.external_id, j.phone_e164, j.template_code, j.template_vars, j.status, j.send_at, j.attempt_count, j.max_attempts, j.customer_name, j.service_name, j.expired_at
 	`, batch, workerID)
 	if err != nil {
 		return nil, err
@@ -150,14 +156,17 @@ func (r *Repository) PickDueJobs(ctx context.Context, batch int, workerID string
 	for rows.Next() {
 		var job model.ReminderJob
 		var templateVars []byte
-		var serviceName *string
+		var customerName, serviceName *string
+		var expiredAt *time.Time
 		if err := rows.Scan(
 			&job.ID, &job.JobUUID, &job.ClientID, &job.ExternalID, &job.PhoneE164, &job.TemplateCode, &templateVars,
-			&job.Status, &job.SendAt, &job.AttemptCount, &job.MaxAttempts, &serviceName,
+			&job.Status, &job.SendAt, &job.AttemptCount, &job.MaxAttempts, &customerName, &serviceName, &expiredAt,
 		); err != nil {
 			return nil, err
 		}
+		job.CustomerName = customerName
 		job.ServiceName = serviceName
+		job.ExpiredAt = expiredAt
 		job.TemplateVars = map[string]interface{}{}
 		_ = json.Unmarshal(templateVars, &job.TemplateVars)
 		out = append(out, job)
@@ -408,6 +417,65 @@ func (r *Repository) GetAppSettings(ctx context.Context) (map[string]json.RawMes
 		result[key] = value
 	}
 	return result, rows.Err()
+}
+
+func (r *Repository) ListReminderTemplates(ctx context.Context) ([]model.ReminderMessageTemplate, error) {
+	rows, err := r.db.Query(ctx, `
+		SELECT template_code, message_template, updated_at
+		FROM reminder_message_templates
+		ORDER BY template_code ASC
+	`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	items := make([]model.ReminderMessageTemplate, 0, 3)
+	for rows.Next() {
+		var item model.ReminderMessageTemplate
+		if err := rows.Scan(&item.TemplateCode, &item.MessageTemplate, &item.UpdatedAt); err != nil {
+			return nil, err
+		}
+		items = append(items, item)
+	}
+	return items, rows.Err()
+}
+
+func (r *Repository) GetReminderTemplateByCode(ctx context.Context, code string) (*model.ReminderMessageTemplate, error) {
+	row := r.db.QueryRow(ctx, `
+		SELECT template_code, message_template, updated_at
+		FROM reminder_message_templates
+		WHERE template_code = $1
+	`, strings.TrimSpace(code))
+
+	var item model.ReminderMessageTemplate
+	if err := row.Scan(&item.TemplateCode, &item.MessageTemplate, &item.UpdatedAt); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, ErrNotFound
+		}
+		return nil, err
+	}
+	return &item, nil
+}
+
+func (r *Repository) UpsertReminderTemplate(ctx context.Context, code, messageTemplate string) error {
+	code = strings.TrimSpace(code)
+	messageTemplate = strings.TrimSpace(messageTemplate)
+
+	if _, ok := allowedReminderTemplateCodes[code]; !ok {
+		return fmt.Errorf("invalid template code")
+	}
+	if messageTemplate == "" {
+		return fmt.Errorf("message template is required")
+	}
+
+	_, err := r.db.Exec(ctx, `
+		INSERT INTO reminder_message_templates(template_code, message_template, updated_at)
+		VALUES ($1, $2, now())
+		ON CONFLICT(template_code)
+		DO UPDATE SET message_template = EXCLUDED.message_template, updated_at = now()
+	`, code, messageTemplate)
+	return err
 }
 
 func (r *Repository) GetStatsOverview(ctx context.Context, since time.Time) (map[string]int64, error) {

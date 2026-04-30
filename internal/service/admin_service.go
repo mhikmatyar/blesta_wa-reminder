@@ -5,12 +5,19 @@ import (
 	"fmt"
 	"net/url"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/rs/zerolog"
 
 	"github.com/blesta/wa-reminder/internal/repository/postgres"
 )
+
+var reminderTemplateLabels = map[string]string{
+	"expiry_h30": "30 hari",
+	"expiry_h15": "15 hari",
+	"expiry_h7":  "7 hari",
+}
 
 type AdminService struct {
 	repo            *postgres.Repository
@@ -135,6 +142,36 @@ func (s *AdminService) GetDelivery(ctx context.Context, id string) (interface{},
 		return nil, fmt.Errorf("invalid delivery id")
 	}
 	return s.repo.GetDeliveryByID(ctx, n)
+}
+
+func (s *AdminService) GetReminderTemplates(ctx context.Context) ([]map[string]interface{}, error) {
+	items, err := s.repo.ListReminderTemplates(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	out := make([]map[string]interface{}, 0, len(items))
+	for _, item := range items {
+		out = append(out, map[string]interface{}{
+			"template_code":    item.TemplateCode,
+			"label":            reminderTemplateLabels[item.TemplateCode],
+			"message_template": item.MessageTemplate,
+			"updated_at":       item.UpdatedAt,
+		})
+	}
+	return out, nil
+}
+
+func (s *AdminService) UpdateReminderTemplate(ctx context.Context, templateCode, messageTemplate string) error {
+	templateCode = strings.TrimSpace(templateCode)
+	messageTemplate = strings.TrimSpace(messageTemplate)
+	if templateCode == "" {
+		return fmt.Errorf("template_code is required")
+	}
+	if messageTemplate == "" {
+		return fmt.Errorf("message_template is required")
+	}
+	return s.repo.UpsertReminderTemplate(ctx, templateCode, messageTemplate)
 }
 
 func (s *AdminService) PauseQueue(ctx context.Context) error {

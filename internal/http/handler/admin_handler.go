@@ -4,6 +4,7 @@ import (
 	"errors"
 	"net/http"
 	"strconv"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 
@@ -15,6 +16,10 @@ import (
 
 type AdminHandler struct {
 	service *service.AdminService
+}
+
+type updateReminderTemplateRequest struct {
+	MessageTemplate string `json:"message_template"`
 }
 
 func NewAdminHandler(service *service.AdminService) *AdminHandler {
@@ -140,4 +145,38 @@ func (h *AdminHandler) ExportDeliveriesCSV(c *gin.Context) {
 	c.Header("Content-Type", "text/csv; charset=utf-8")
 	c.Header("Content-Disposition", `attachment; filename="`+filename+`"`)
 	c.Data(http.StatusOK, "text/csv; charset=utf-8", data)
+}
+
+func (h *AdminHandler) GetReminderTemplates(c *gin.Context) {
+	data, err := h.service.GetReminderTemplates(c.Request.Context())
+	if err != nil {
+		response.Fail(c, http.StatusInternalServerError, "INTERNAL_ERROR", err.Error(), nil)
+		return
+	}
+	response.OK(c, http.StatusOK, gin.H{
+		"accepted_placeholders": []string{
+			"{{customer_name}}",
+			"{{service_name}}",
+			"{{expired_date}}",
+		},
+		"items": data,
+	})
+}
+
+func (h *AdminHandler) UpdateReminderTemplate(c *gin.Context) {
+	code := strings.TrimSpace(c.Param("template_code"))
+	var req updateReminderTemplateRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.Fail(c, http.StatusBadRequest, "VALIDATION_ERROR", "invalid request body", nil)
+		return
+	}
+	if strings.TrimSpace(req.MessageTemplate) == "" {
+		response.Fail(c, http.StatusBadRequest, "VALIDATION_ERROR", "message_template is required", nil)
+		return
+	}
+	if err := h.service.UpdateReminderTemplate(c.Request.Context(), code, req.MessageTemplate); err != nil {
+		response.Fail(c, http.StatusBadRequest, "VALIDATION_ERROR", err.Error(), nil)
+		return
+	}
+	response.OK(c, http.StatusOK, gin.H{"updated": true})
 }

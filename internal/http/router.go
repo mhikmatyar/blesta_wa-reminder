@@ -70,6 +70,8 @@ func NewRouter(application *app.App) *gin.Engine {
 		admin.GET("/deliveries", adminHandler.ListDeliveries)
 		admin.GET("/deliveries/export.csv", adminHandler.ExportDeliveriesCSV)
 		admin.GET("/deliveries/:id", adminHandler.DeliveryDetail)
+		admin.GET("/reminder-templates", adminHandler.GetReminderTemplates)
+		admin.PUT("/reminder-templates/:template_code", adminHandler.UpdateReminderTemplate)
 		admin.POST("/queue/pause", adminHandler.PauseQueue)
 		admin.POST("/queue/resume", adminHandler.ResumeQueue)
 	}
