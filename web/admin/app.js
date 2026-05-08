@@ -62,7 +62,12 @@
     };
     return {
       get: (path) => request(path, { method: "GET" }),
-      post: (path) => request(path, { method: "POST" }),
+      post: (path, body) =>
+        request(path, {
+          method: "POST",
+          headers: body ? { "Content-Type": "application/json" } : undefined,
+          body: body ? JSON.stringify(body) : undefined,
+        }),
       put: (path, body) =>
         request(path, {
           method: "PUT",
@@ -119,6 +124,9 @@
       btnSaveTemplateH30: document.getElementById("btnSaveTemplateH30"),
       btnSaveTemplateH15: document.getElementById("btnSaveTemplateH15"),
       btnSaveTemplateH7: document.getElementById("btnSaveTemplateH7"),
+      btnTestTemplateH30: document.getElementById("btnTestTemplateH30"),
+      btnTestTemplateH15: document.getElementById("btnTestTemplateH15"),
+      btnTestTemplateH7: document.getElementById("btnTestTemplateH7"),
     };
 
     const api = apiClient("");
@@ -154,10 +162,17 @@
     }
 
     function getTemplateBindings(code) {
-      if (code === "expiry_h30") return { textarea: dom.templateH30, updatedAt: dom.templateH30UpdatedAt, button: dom.btnSaveTemplateH30 };
-      if (code === "expiry_h15") return { textarea: dom.templateH15, updatedAt: dom.templateH15UpdatedAt, button: dom.btnSaveTemplateH15 };
-      if (code === "expiry_h7") return { textarea: dom.templateH7, updatedAt: dom.templateH7UpdatedAt, button: dom.btnSaveTemplateH7 };
+      if (code === "expiry_h30") return { textarea: dom.templateH30, updatedAt: dom.templateH30UpdatedAt, button: dom.btnSaveTemplateH30, testButton: dom.btnTestTemplateH30 };
+      if (code === "expiry_h15") return { textarea: dom.templateH15, updatedAt: dom.templateH15UpdatedAt, button: dom.btnSaveTemplateH15, testButton: dom.btnTestTemplateH15 };
+      if (code === "expiry_h7") return { textarea: dom.templateH7, updatedAt: dom.templateH7UpdatedAt, button: dom.btnSaveTemplateH7, testButton: dom.btnTestTemplateH7 };
       return null;
+    }
+
+    function setTemplateTestButtonsVisible(visible) {
+      [dom.btnTestTemplateH30, dom.btnTestTemplateH15, dom.btnTestTemplateH7].forEach((btn) => {
+        if (!btn) return;
+        btn.classList.toggle("d-none", !visible);
+      });
     }
 
     function renderReminderTemplates(payload) {
@@ -189,6 +204,7 @@
       dom.waPhone.textContent = data.phone_masked || "-";
       dom.waLastSeen.textContent = formatDateTime(data.last_seen_at);
       dom.qrSection.classList.toggle("d-none", status !== "need_qr");
+      setTemplateTestButtonsVisible(status === "connected");
 
       // Any transition into need_qr (including external logout from mobile) forces manual QR mode.
       if (status === "need_qr" && prevStatus !== "need_qr") {
@@ -389,6 +405,33 @@
       }
     }
 
+    async function testTemplate(code) {
+      const state = store.get();
+      if (state.status !== "connected") {
+        showToast("WA belum connected");
+        return;
+      }
+      const binding = getTemplateBindings(code);
+      if (!binding) return;
+      const value = binding.textarea.value.trim();
+      if (!value) {
+        showToast("Template tidak boleh kosong");
+        return;
+      }
+
+      binding.testButton.disabled = true;
+      try {
+        await api.post("/admin-api/v1/reminder-templates/" + code + "/test", {
+          message_template: value,
+        });
+        showToast("Test message " + code + " berhasil dikirim");
+      } catch (err) {
+        showToast("Failed test message: " + err.message);
+      } finally {
+        binding.testButton.disabled = false;
+      }
+    }
+
     async function fetchDeliveryDetail(id) {
       try {
         const res = await api.get("/admin-api/v1/deliveries/" + id);
@@ -463,6 +506,9 @@
       dom.btnSaveTemplateH30.addEventListener("click", () => saveTemplate("expiry_h30"));
       dom.btnSaveTemplateH15.addEventListener("click", () => saveTemplate("expiry_h15"));
       dom.btnSaveTemplateH7.addEventListener("click", () => saveTemplate("expiry_h7"));
+      dom.btnTestTemplateH30.addEventListener("click", () => testTemplate("expiry_h30"));
+      dom.btnTestTemplateH15.addEventListener("click", () => testTemplate("expiry_h15"));
+      dom.btnTestTemplateH7.addEventListener("click", () => testTemplate("expiry_h7"));
 
       dom.btnReconnect.addEventListener("click", () => askConfirm("Reconnect WhatsApp connection?", async () => {
         await api.post("/admin-api/v1/wa/reconnect");

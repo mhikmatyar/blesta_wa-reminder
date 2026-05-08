@@ -22,6 +22,10 @@ type updateReminderTemplateRequest struct {
 	MessageTemplate string `json:"message_template"`
 }
 
+type testReminderTemplateRequest struct {
+	MessageTemplate string `json:"message_template"`
+}
+
 func NewAdminHandler(service *service.AdminService) *AdminHandler {
 	return &AdminHandler{service: service}
 }
@@ -179,4 +183,22 @@ func (h *AdminHandler) UpdateReminderTemplate(c *gin.Context) {
 		return
 	}
 	response.OK(c, http.StatusOK, gin.H{"updated": true})
+}
+
+func (h *AdminHandler) TestReminderTemplate(c *gin.Context) {
+	code := strings.TrimSpace(c.Param("template_code"))
+	var req testReminderTemplateRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.Fail(c, http.StatusBadRequest, "VALIDATION_ERROR", "invalid request body", nil)
+		return
+	}
+	if strings.TrimSpace(req.MessageTemplate) == "" {
+		response.Fail(c, http.StatusBadRequest, "VALIDATION_ERROR", "message_template is required", nil)
+		return
+	}
+	if err := h.service.SendReminderTemplateTest(c.Request.Context(), code, req.MessageTemplate); err != nil {
+		response.Fail(c, http.StatusBadRequest, "VALIDATION_ERROR", err.Error(), nil)
+		return
+	}
+	response.OK(c, http.StatusOK, gin.H{"sent": true})
 }
