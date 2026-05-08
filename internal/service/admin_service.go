@@ -9,7 +9,9 @@ import (
 	"time"
 
 	"github.com/rs/zerolog"
+	waTypes "go.mau.fi/whatsmeow/types"
 
+	"github.com/blesta/wa-reminder/internal/domain/model"
 	"github.com/blesta/wa-reminder/internal/repository/postgres"
 )
 
@@ -172,6 +174,63 @@ func (s *AdminService) UpdateReminderTemplate(ctx context.Context, templateCode,
 		return fmt.Errorf("message_template is required")
 	}
 	return s.repo.UpsertReminderTemplate(ctx, templateCode, messageTemplate)
+}
+
+func (s *AdminService) SendReminderTemplateTest(ctx context.Context, templateCode, messageTemplate string) error {
+	templateCode = strings.TrimSpace(templateCode)
+	messageTemplate = strings.TrimSpace(messageTemplate)
+	if templateCode == "" {
+		return fmt.Errorf("template_code is required")
+	}
+	if _, ok := reminderTemplateLabels[templateCode]; !ok {
+		return fmt.Errorf("invalid template code")
+	}
+	if messageTemplate == "" {
+		return fmt.Errorf("message_template is required")
+	}
+
+	waStatus, err := s.repo.GetWAStatus(ctx)
+	if err != nil {
+		return err
+	}
+	if waStatus.ConnectionStatus != model.WAStatusConnected {
+		return fmt.Errorf("wa is not connected")
+	}
+	if waStatus.WAJID == nil || strings.TrimSpace(*waStatus.WAJID) == "" {
+		return fmt.Errorf("active wa jid not found")
+	}
+
+	dummyCustomer := "Pelanggan Uji"
+	dummyService := "Hosting Test"
+	dummyExpiredAt := time.Date(2026, 12, 31, 10, 0, 0, 0, time.UTC)
+	testJob := model.ReminderJob{
+		TemplateCode: templateCode,
+		CustomerName: &dummyCustomer,
+		ServiceName:  &dummyService,
+		ExpiredAt:    &dummyExpiredAt,
+		TemplateVars: map[string]interface{}{},
+		PhoneE164:    "6200000000000",
+		AttemptCount: 0,
+		MaxAttempts:  1,
+		ExternalID:   "template-test",
+		JobUUID:      "template-test",
+		ClientID:     0,
+		Status:       model.ReminderStatusPending,
+		Priority:     0,
+	}
+
+	rendered := renderMessageTemplate(messageTemplate, testJob, "Asia/Jakarta")
+	jid, err := waTypes.ParseJID(strings.TrimSpace(*waStatus.WAJID))
+	if err != nil {
+		return fmt.Errorf("invalid active wa jid: %w", err)
+	}
+	// SendMessage requires user JID without device part.
+	jid.Device = 0
+	if jid.Server == "" {
+		jid.Server = waTypes.DefaultUserServer
+	}
+	_, err = s.waService.SendTextWithTyping(ctx, jid, rendered, 2*time.Second)
+	return err
 }
 
 func (s *AdminService) PauseQueue(ctx context.Context) error {
