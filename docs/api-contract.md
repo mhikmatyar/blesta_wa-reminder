@@ -90,8 +90,8 @@ Contoh response `GET /reminder-templates`:
     ],
     "items": [
       {
-        "template_code": "expiry_h30",
-        "label": "30 hari",
+        "template_code": "expiry_h14",
+        "label": "14 hari",
         "message_template": "Halo {{customer_name}}, ... {{expired_date}}",
         "updated_at": "2026-04-30T08:00:00Z"
       }
@@ -100,15 +100,15 @@ Contoh response `GET /reminder-templates`:
 }
 ```
 
-Contoh request `PUT /reminder-templates/expiry_h30`:
+Contoh request `PUT /reminder-templates/expiry_h14`:
 ```json
 {
-  "message_template": "Halo {{customer_name}}, ini pengingat H-30 untuk layanan {{service_name}}. Masa aktif akan berakhir pada {{expired_date}}."
+  "message_template": "Halo {{customer_name}}, ini pengingat H-14 untuk layanan {{service_name}}. Masa aktif akan berakhir pada {{expired_date}}."
 }
 ```
 
 Aturan:
-- `template_code` yang didukung hanya: `expiry_h30`, `expiry_h15`, `expiry_h7`.
+- `template_code` yang didukung hanya: `expiry_h14`, `expiry_h7`, `expiry_h3`.
 - `message_template` wajib non-empty (setelah trim).
 - Jika runtime menemukan template kosong/tidak ditemukan, worker fallback ke hardcoded message.
 

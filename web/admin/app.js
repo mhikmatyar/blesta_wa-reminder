@@ -115,18 +115,18 @@
       toastMessage: document.getElementById("toastMessage"),
       appToast: document.getElementById("appToast"),
       templateAcceptedPlaceholders: document.getElementById("templateAcceptedPlaceholders"),
-      templateH30: document.getElementById("templateH30"),
-      templateH15: document.getElementById("templateH15"),
+      templateH14: document.getElementById("templateH14"),
       templateH7: document.getElementById("templateH7"),
-      templateH30UpdatedAt: document.getElementById("templateH30UpdatedAt"),
-      templateH15UpdatedAt: document.getElementById("templateH15UpdatedAt"),
+      templateH3: document.getElementById("templateH3"),
+      templateH14UpdatedAt: document.getElementById("templateH14UpdatedAt"),
       templateH7UpdatedAt: document.getElementById("templateH7UpdatedAt"),
-      btnSaveTemplateH30: document.getElementById("btnSaveTemplateH30"),
-      btnSaveTemplateH15: document.getElementById("btnSaveTemplateH15"),
+      templateH3UpdatedAt: document.getElementById("templateH3UpdatedAt"),
+      btnSaveTemplateH14: document.getElementById("btnSaveTemplateH14"),
       btnSaveTemplateH7: document.getElementById("btnSaveTemplateH7"),
-      btnTestTemplateH30: document.getElementById("btnTestTemplateH30"),
-      btnTestTemplateH15: document.getElementById("btnTestTemplateH15"),
+      btnSaveTemplateH3: document.getElementById("btnSaveTemplateH3"),
+      btnTestTemplateH14: document.getElementById("btnTestTemplateH14"),
       btnTestTemplateH7: document.getElementById("btnTestTemplateH7"),
+      btnTestTemplateH3: document.getElementById("btnTestTemplateH3"),
     };
 
     const api = apiClient("");
@@ -162,14 +162,14 @@
     }
 
     function getTemplateBindings(code) {
-      if (code === "expiry_h30") return { textarea: dom.templateH30, updatedAt: dom.templateH30UpdatedAt, button: dom.btnSaveTemplateH30, testButton: dom.btnTestTemplateH30 };
-      if (code === "expiry_h15") return { textarea: dom.templateH15, updatedAt: dom.templateH15UpdatedAt, button: dom.btnSaveTemplateH15, testButton: dom.btnTestTemplateH15 };
+      if (code === "expiry_h14") return { textarea: dom.templateH14, updatedAt: dom.templateH14UpdatedAt, button: dom.btnSaveTemplateH14, testButton: dom.btnTestTemplateH14 };
       if (code === "expiry_h7") return { textarea: dom.templateH7, updatedAt: dom.templateH7UpdatedAt, button: dom.btnSaveTemplateH7, testButton: dom.btnTestTemplateH7 };
+      if (code === "expiry_h3") return { textarea: dom.templateH3, updatedAt: dom.templateH3UpdatedAt, button: dom.btnSaveTemplateH3, testButton: dom.btnTestTemplateH3 };
       return null;
     }
 
     function setTemplateTestButtonsVisible(visible) {
-      [dom.btnTestTemplateH30, dom.btnTestTemplateH15, dom.btnTestTemplateH7].forEach((btn) => {
+      [dom.btnTestTemplateH14, dom.btnTestTemplateH7, dom.btnTestTemplateH3].forEach((btn) => {
         if (!btn) return;
         btn.classList.toggle("d-none", !visible);
       });
@@ -503,12 +503,12 @@
         });
         window.location.href = href;
       });
-      dom.btnSaveTemplateH30.addEventListener("click", () => saveTemplate("expiry_h30"));
-      dom.btnSaveTemplateH15.addEventListener("click", () => saveTemplate("expiry_h15"));
+      dom.btnSaveTemplateH14.addEventListener("click", () => saveTemplate("expiry_h14"));
       dom.btnSaveTemplateH7.addEventListener("click", () => saveTemplate("expiry_h7"));
-      dom.btnTestTemplateH30.addEventListener("click", () => testTemplate("expiry_h30"));
-      dom.btnTestTemplateH15.addEventListener("click", () => testTemplate("expiry_h15"));
+      dom.btnSaveTemplateH3.addEventListener("click", () => saveTemplate("expiry_h3"));
+      dom.btnTestTemplateH14.addEventListener("click", () => testTemplate("expiry_h14"));
       dom.btnTestTemplateH7.addEventListener("click", () => testTemplate("expiry_h7"));
+      dom.btnTestTemplateH3.addEventListener("click", () => testTemplate("expiry_h3"));
 
       dom.btnReconnect.addEventListener("click", () => askConfirm("Reconnect WhatsApp connection?", async () => {
         await api.post("/admin-api/v1/wa/reconnect");
