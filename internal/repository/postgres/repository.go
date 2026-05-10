@@ -20,9 +20,9 @@ import (
 var ErrNotFound = errors.New("not found")
 
 var allowedReminderTemplateCodes = map[string]struct{}{
-	"expiry_h30": {},
-	"expiry_h15": {},
+	"expiry_h14": {},
 	"expiry_h7":  {},
+	"expiry_h3":  {},
 }
 
 type Repository struct {

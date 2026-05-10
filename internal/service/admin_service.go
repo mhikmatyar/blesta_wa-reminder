@@ -16,9 +16,9 @@ import (
 )
 
 var reminderTemplateLabels = map[string]string{
-	"expiry_h30": "30 hari",
-	"expiry_h15": "15 hari",
+	"expiry_h14": "14 hari",
 	"expiry_h7":  "7 hari",
+	"expiry_h3":  "3 hari",
 }
 
 type AdminService struct {
