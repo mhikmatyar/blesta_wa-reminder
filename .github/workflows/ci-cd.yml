@@ -45,15 +45,17 @@ jobs:
 
       - name: Upload binary to VPS
         run: |
+          # Bikin folder tmp di home user jika belum ada, lalu upload ke sana
+          ssh -p "${{ secrets.VPS_PORT }}" "${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}" "mkdir -p ~/tmp"
           scp -P "${{ secrets.VPS_PORT }}" dist/blesta-wa-reminder \
-            "${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}:/opt/blesta-wa-reminder/blesta-wa-reminder.new"
+            "${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}:~/tmp/blesta-wa-reminder.new"
 
       - name: Activate new binary and restart service
         run: |
           ssh -p "${{ secrets.VPS_PORT }}" "${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}" \
             "set -euo pipefail && \
-             chmod +x /opt/blesta-wa-reminder/blesta-wa-reminder.new && \
-             mv /opt/blesta-wa-reminder/blesta-wa-reminder.new /opt/blesta-wa-reminder/blesta-wa-reminder && \
+             sudo chmod +x ~/tmp/blesta-wa-reminder.new && \
+             sudo mv ~/tmp/blesta-wa-reminder.new /opt/blesta-wa-reminder/blesta-wa-reminder && \
              sudo systemctl restart wa-reminder && \
              sudo systemctl is-active --quiet wa-reminder"
 
