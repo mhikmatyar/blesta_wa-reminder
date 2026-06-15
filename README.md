@@ -102,3 +102,6 @@ node --test web/admin/app.test.js
 - Endpoint `/api/v1/*` wajib Bearer token
 - Endpoint `/admin-api/v1/*` wajib Basic Auth
 - Jangan expose admin API ke publik tanpa proteksi tambahan (reverse proxy + firewall/IP allowlist)
+
+## Catatan Update
+- 15-06-2026: migrasi server
